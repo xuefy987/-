@@ -1,0 +1,3363 @@
+<html lang="zh-CN" data-trae-theme="light"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiteDoc - 轻量文档编辑器</title>
+<!-- Mammoth.js: DOCX 解析 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js';document.head.appendChild(s);"></script>
+<!-- PDF.js: PDF 渲染 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js';document.head.appendChild(s);"></script>
+<!-- PDF.js Worker: 作为普通脚本加载，解决 file:// 跨域问题 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js" onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';document.head.appendChild(s);"></script>
+<!-- EPUB.js: EPUB 电子书 -->
+<script src="https://unpkg.com/epubjs@0.3.93/dist/epub.min.js"></script>
+<!-- SheetJS: Excel/CSV 表格 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';document.head.appendChild(s);"></script>
+<!-- JSZip: 打包保存 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/jszip@3.10.1/dist/jszip.min.js';document.head.appendChild(s);"></script>
+<!-- Marked: Markdown 解析 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js" onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/marked@12.0.0/marked.min.js';document.head.appendChild(s);"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --primary: #1a73e8;
+  --primary-light: #e8f0fe;
+  --primary-dark: #1557b0;
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --border: #e0e0e0;
+  --text: #202124;
+  --text-secondary: #5f6368;
+  --text-light: #9aa0a6;
+  --danger: #ea4335;
+  --success: #34a853;
+  --warning: #fbbc04;
+  --shadow: 0 1px 3px rgba(0,0,0,0.12);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.15);
+  --radius: 8px;
+  --toolbar-h: 44px;
+  --menubar-h: 36px;
+  --statusbar-h: 32px;
+  --sidebar-w: 260px;
+}
+
+body {
+  font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ====== 顶部菜单栏 ====== */
+.menubar {
+  height: var(--menubar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 2px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+.menu-item {
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  position: relative;
+  user-select: none;
+  transition: background 0.15s;
+}
+.menu-item:hover { background: var(--primary-light); }
+.menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  min-width: 220px;
+  padding: 4px 0;
+  z-index: 200;
+}
+.menu-item:hover .menu-dropdown { display: block; }
+.dropdown-item {
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: background 0.1s;
+}
+.dropdown-item:hover { background: var(--primary-light); }
+.dropdown-item .shortcut { color: var(--text-light); font-size: 11px; }
+.dropdown-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+.app-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--primary);
+  padding: 0 8px;
+  margin-right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-title svg { width: 20px; height: 20px; }
+
+/* ====== 工具栏 ====== */
+.toolbar {
+  height: var(--toolbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 4px;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.tool-btn {
+  height: 32px;
+  min-width: 32px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.tool-btn:hover { background: var(--primary-light); }
+.tool-btn:active { transform: scale(0.95); }
+.tool-btn.active { background: var(--primary); color: white; }
+.tool-btn svg { width: 16px; height: 16px; }
+.tool-divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+select.tool-select {
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 13px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+/* ====== 主体区域 ====== */
+.main-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ====== 侧边栏 ====== */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.sidebar-header {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.sidebar-item {
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-item:hover { background: var(--primary-light); border-left-color: var(--primary); }
+.sidebar-item.active { background: var(--primary-light); border-left-color: var(--primary); font-weight: 600; }
+.sidebar-item .icon { width: 16px; height: 16px; opacity: 0.6; flex-shrink: 0; }
+.sidebar-toggle {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.sidebar-toggle:hover { background: var(--primary-light); }
+
+/* ====== 文档内容区 ====== */
+.content-area {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: var(--bg);
+}
+.content-wrapper {
+  min-height: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+.doc-page {
+  background: white;
+  width: 100%;
+  max-width: 820px;
+  min-height: 800px;
+  padding: 60px 72px;
+  box-shadow: var(--shadow);
+  border-radius: 2px;
+  outline: none;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text);
+  position: relative;
+}
+.doc-page.editing {
+  box-shadow: 0 0 0 2px var(--primary), var(--shadow);
+}
+.doc-page h1, .doc-page h2, .doc-page h3 { margin: 16px 0 8px; }
+.doc-page p { margin: 8px 0; }
+.doc-page table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+.doc-page table td, .doc-page table th { border: 1px solid #ccc; padding: 6px 10px; font-size: 13px; }
+.doc-page table th { background: #f5f5f5; font-weight: 600; }
+.doc-page img { max-width: 100%; height: auto; }
+.doc-page ul, .doc-page ol { padding-left: 28px; margin: 8px 0; }
+
+/* PDF 渲染容器 */
+.pdf-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px;
+}
+.pdf-container canvas {
+  box-shadow: var(--shadow-lg);
+  border-radius: 2px;
+}
+
+/* 表格渲染 */
+.sheet-container {
+  width: 100%;
+  overflow: auto;
+  background: white;
+}
+.sheet-container table {
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+.sheet-container td, .sheet-container th {
+  border: 1px solid #d0d0d0;
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 完整显示模式：换行并自动行高 */
+.sheet-container.wrap td {
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  vertical-align: top;
+}
+.sheet-container th {
+  background: #f0f0f0;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  overflow: visible;
+}
+.sheet-container .row-number {
+  background: #f0f0f0;
+  text-align: center;
+  width: 40px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  overflow: visible;
+}
+.sheet-container th.corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 5;
+}
+
+/* 表格工具栏 */
+.sheet-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #f8f9fa;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.sheet-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.sheet-toolbar button {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: white;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sheet-toolbar button:hover { border-color: var(--primary); color: var(--primary); }
+.sheet-toolbar .sheet-stats { color: var(--text-light); margin-left: auto; }
+
+/* 列宽/行高拖拽手柄（完全位于单元格内部，避免被裁剪） */
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 6;
+  background: transparent;
+}
+.col-resizer:hover { background: var(--primary); opacity: 0.4; }
+.row-resizer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 6px;
+  cursor: row-resize;
+  z-index: 6;
+  background: transparent;
+}
+.row-resizer:hover { background: var(--primary); opacity: 0.4; }
+body.resizing, body.resizing * { user-select: none !important; }
+
+/* 筛选状态栏 */
+.filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #fffbe6;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 10px;
+  max-width: 320px;
+}
+.filter-tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-tag b { cursor: pointer; font-weight: 700; padding: 0 2px; }
+.filter-tag b:hover { color: #d93025; }
+.filter-clear-all {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  font-size: 12px;
+  cursor: pointer;
+}
+.filter-clear-all:hover { border-color: #d93025; color: #d93025; }
+
+/* 筛选下拉面板 */
+.sheet-container th .col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.sheet-container th .filter-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+.sheet-container th .filter-icon:hover { opacity: 1; }
+.sheet-container th.filter-active .filter-icon { opacity: 1; color: var(--primary); }
+.sheet-container th.filter-active { background: var(--primary-light); }
+.filter-dropdown {
+  position: fixed;
+  z-index: 100;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  width: 260px;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.filter-text {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.filter-text input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  outline: none;
+}
+.filter-text input:focus { border-color: var(--primary); }
+.filter-text button {
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.filter-text button:hover { background: var(--primary-dark); }
+.filter-divider {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-light);
+  background: #fafafa;
+  border-bottom: 1px solid var(--border);
+}
+.filter-dropdown .filter-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.filter-dropdown .filter-search input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  outline: none;
+}
+.filter-dropdown .filter-search input:focus { border-color: var(--primary); }
+.filter-dropdown .filter-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 200px;
+}
+.filter-dropdown .filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.filter-dropdown .filter-item:hover { background: var(--primary-light); }
+.filter-dropdown .filter-item input { margin: 0; cursor: pointer; }
+.filter-dropdown .filter-item label {
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-dropdown .filter-actions {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  background: #fafafa;
+}
+.filter-dropdown .filter-actions button {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-dropdown .filter-actions button:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.filter-dropdown .filter-actions .btn-apply {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+.filter-dropdown .filter-actions .btn-apply:hover {
+  background: var(--primary-dark);
+  color: white;
+}
+.filter-backdrop {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 99;
+}
+
+/* ====== 空状态 ====== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  color: var(--text-light);
+}
+.empty-state svg { width: 64px; height: 64px; opacity: 0.4; }
+.empty-state h2 { font-size: 18px; font-weight: 500; }
+.empty-state p { font-size: 13px; }
+.empty-state .drop-hint {
+  margin-top: 12px;
+  padding: 20px 40px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.empty-state .drop-hint:hover, .empty-state .drop-hint.dragover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+/* ====== 状态栏 ====== */
+.statusbar {
+  height: var(--statusbar-h);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.status-item { display: flex; align-items: center; gap: 4px; }
+.status-item .dot { width: 6px; height: 6px; border-radius: 50%; }
+.status-spacer { flex: 1; }
+.status-btn {
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.status-btn:hover { background: var(--primary-light); }
+
+/* ====== 字数统计弹窗 ====== */
+.wordcount-modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+}
+.wordcount-modal.show { display: flex; }
+.wordcount-dialog {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 24px 28px;
+  min-width: 320px;
+  max-width: 400px;
+}
+.wordcount-dialog h3 {
+  font-size: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.wordcount-dialog .close-btn { cursor: pointer; color: var(--text-light); font-size: 20px; }
+.wordcount-dialog .wc-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.wordcount-dialog .wc-row:last-child { border-bottom: none; }
+.wordcount-dialog .wc-label { color: var(--text-secondary); }
+.wordcount-dialog .wc-value { font-weight: 600; }
+
+/* ====== Toast ====== */
+.toast {
+  position: fixed;
+  bottom: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: white;
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+
+/* ====== 加载动画 ====== */
+.loader {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+}
+.loader.show { display: block; }
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ====== EPUB 阅读器 ====== */
+.epub-reader {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+.epub-reader #epub-view {
+  width: 100%;
+  height: calc(100vh - var(--menubar-h) - var(--toolbar-h) - var(--statusbar-h) - 40px);
+  overflow: hidden;
+  background: white;
+}
+
+/* ====== 图片插入浮动栏 ====== */
+.image-float-bar {
+  display: none;
+  position: fixed;
+  z-index: 400;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  gap: 2px;
+}
+.image-float-bar.show { display: flex; }
+.image-float-bar .tool-btn { height: 28px; min-width: 28px; }
+
+/* ====== 隐藏文件输入 ====== */
+.hidden-input { display: none; }
+
+/* ====== 缩放控制 ====== */
+.zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.zoom-control button {
+  width: 24px; height: 24px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.zoom-control button:hover { background: var(--primary-light); }
+.zoom-control span { min-width: 40px; text-align: center; }
+
+/* ====== 滚动条美化 ====== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a0a0a0; }
+
+/* 编辑工具栏 - 富文本编辑 */
+.edit-tools { display: none; }
+.edit-tools.show { display: flex; gap: 2px; align-items: center; }
+.color-input {
+  width: 28px; height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px;
+  background: var(--surface);
+}
+</style>
+<style data-trae-edit-ui="true" id="trae-previewer-tools-styles">:root {
+  --trae-layer-image-download: 89990;
+  --trae-layer-browser-inspect-overlay: 90000;
+  --trae-layer-browser-inspect-highlight: 90010;
+  --trae-layer-browser-inspect-action: 90020;
+  --trae-layer-text-selection-action: 90030;
+  --trae-layer-edit-tooltip: 100095;
+}
+:root,
+[data-trae-theme='dark'] {
+  --trae-bg-base-default: #171717;
+  --trae-bg-menu: #222427;
+  --trae-bg-overlay-l1: rgba(255, 255, 255, 0.04);
+  --trae-bg-overlay-l2: rgba(255, 255, 255, 0.08);
+  --trae-bg-overlay-l3: rgba(255, 255, 255, 0.12);
+  --trae-bg-overlay-l4: rgba(255, 255, 255, 0.16);
+  --trae-bg-invert: #f5f9fe;
+  --trae-bg-invert-hover: #e8ecf0;
+  --trae-bg-invert-active: #dce0e4;
+  --trae-bg-invert-disabled: rgba(224, 226, 242, 0.12);
+  --bg-bg-brand-disabled: rgba(75, 63, 227, 0.35);
+  --bg-bg-brand-popup: rgba(106, 111, 255, 0.15);
+  --trae-border-l1: #e0e2f217;
+  --trae-border-l2: rgba(255, 255, 255, 0.12);
+  --trae-border-l3: rgba(255, 255, 255, 0.08);
+  --trae-border-neutral-l3: rgba(229, 229, 229, 0.20);
+  --trae-border-brand: #6a6fff;
+  --trae-text-default: #f5f9fe;
+  --trae-text-default-hover: #f5f9fe;
+  --trae-text-default-active: #f5f9fe;
+  --trae-text-secondary: rgba(245, 249, 254, 0.5);
+  --trae-text-tertiary: rgba(245, 249, 254, 0.4);
+  --trae-text-disabled: #666b75;
+  --trae-text-onaccent: #222427;
+  --trae-icon-default: #f5f9fe;
+  --trae-icon-secondary: rgba(245, 249, 254, 0.5);
+  --trae-icon-brand: #6a6fff;
+  --icon-icon-brand: var(--trae-icon-brand);
+  --trae-icon-onaccent: #222427;
+  --trae-status-success: #22c55e;
+  --trae-status-primary: #3b82f6;
+  --trae-status-primary-default: #387bff;
+  --trae-status-primary-surface-l1: rgba(53, 121, 255, 0.18);
+  --trae-status-success-default: #33c192;
+  --trae-status-success-surface-l1: rgba(0, 165, 110, 0.18);
+  --trae-status-error-default: #f65a5a;
+  --trae-status-error-surface-l1: rgba(246, 70, 70, 0.18);
+  --trae-annotation-marker-bg: #4b3fe3;
+  --trae-annotation-marker-text: #ffffff;
+  --trae-annotation-region-border: var(--trae-status-primary-default);
+  --trae-region-outside-mask-bg: rgba(0, 0, 0, 0.32);
+  --trae-panel-shadow: 0px 6px 24px -1px rgba(0, 0, 0, 0.16);
+  --trae-floating-shadow: 0px 2px 8px 0px rgba(0, 0, 0, 0.2);
+  --trae-shadow-elevation-50: 0 1px 2px -1px rgba(0, 0, 0, 0.45);
+  --text-text-default: var(--trae-text-default);
+  --text-text-onaccent: var(--trae-text-onaccent);
+  --bg-bg-menu: var(--trae-bg-menu);
+  --bg-bg-white: var(--trae-bg-menu);
+  --bg-bg-invert: var(--trae-bg-invert);
+  --bg-bg-invert-disabled: var(--trae-bg-invert-disabled);
+  --bg-bg-overlay-l1: var(--trae-bg-overlay-l1);
+  --bg-bg-overlay-l2: var(--trae-bg-overlay-l2);
+  --bg-bg-overlay-l3: var(--trae-bg-overlay-l3);
+  --border-border-neutral-l1: var(--trae-border-l1);
+  --border-border-brand: var(--trae-border-brand);
+  --border-border-brand-half: rgba(106, 111, 255, 0.4);
+  --status-error-default: var(--trae-status-error-default);
+  --status-error-surface-l1: var(--trae-status-error-surface-l1);
+  --radius-radius-md-12: 12px;
+  --spacers-spacer-0: 0;
+  --spacers-spacer-6: 6px;
+}
+
+[data-trae-theme='light'] {
+  --trae-bg-base-default: #fafafa;
+  --trae-bg-menu: #ffffff;
+  --trae-bg-overlay-l1: rgba(0, 0, 0, 0.04);
+  --trae-bg-overlay-l2: rgba(0, 0, 0, 0.06);
+  --trae-bg-overlay-l3: rgba(0, 0, 0, 0.08);
+  --trae-bg-overlay-l4: rgba(0, 0, 0, 0.12);
+  --trae-bg-invert: #1f2328;
+  --trae-bg-invert-hover: #32383f;
+  --trae-bg-invert-active: #444d56;
+  --trae-bg-invert-disabled: rgba(115, 115, 115, 0.20);
+  --bg-bg-brand-disabled: rgba(75, 63, 227, 0.22);
+  --bg-bg-brand-popup: rgba(170, 183, 255, 0.36);
+  --trae-border-l1: rgba(0, 0, 0, 0.1);
+  --trae-border-l2: rgba(0, 0, 0, 0.12);
+  --trae-border-l3: rgba(0, 0, 0, 0.08);
+  --trae-border-neutral-l3: rgba(115, 115, 115, 0.36);
+  --trae-border-brand: #4b3fe3;
+  --trae-text-default: #1f2328;
+  --trae-text-default-hover: #111214;
+  --trae-text-default-active: #111214;
+  --trae-text-secondary: rgba(31, 35, 40, 0.5);
+  --trae-text-tertiary: rgba(31, 35, 40, 0.4);
+  --trae-text-disabled: #a1a1a1;
+  --trae-text-onaccent: #ffffff;
+  --trae-icon-default: #1f2328;
+  --trae-icon-secondary: rgba(31, 35, 40, 0.5);
+  --trae-icon-brand: #4b3fe3;
+  --icon-icon-brand: var(--trae-icon-brand);
+  --trae-icon-onaccent: #ffffff;
+  --trae-status-success: #22c55e;
+  --trae-status-primary: #3b82f6;
+  --trae-status-primary-default: #2f74ff;
+  --trae-status-primary-surface-l1: rgba(47, 116, 255, 0.12);
+  --trae-status-success-default: #15a877;
+  --trae-status-success-surface-l1: rgba(64, 176, 139, 0.12);
+  --trae-status-error-default: #e8463a;
+  --trae-status-error-surface-l1: rgba(232, 70, 58, 0.12);
+  --trae-annotation-marker-bg: #4b3fe3;
+  --trae-annotation-marker-text: #ffffff;
+  --trae-annotation-region-border: var(--trae-status-primary-default);
+  --trae-region-outside-mask-bg: rgba(0, 0, 0, 0.18);
+  --trae-panel-shadow: 0px 6px 24px -1px rgba(24, 24, 24, 0.06);
+  --trae-floating-shadow: 0px 2px 8px 0px rgba(24, 24, 24, 0.2);
+  --trae-shadow-elevation-50: 0 1px 2px -1px rgba(24, 24, 24, 0.08);
+  --text-text-default: var(--trae-text-default);
+  --text-text-onaccent: var(--trae-text-onaccent);
+  --bg-bg-menu: var(--trae-bg-menu);
+  --bg-bg-white: var(--trae-bg-menu);
+  --bg-bg-invert: var(--trae-bg-invert);
+  --bg-bg-invert-disabled: var(--trae-bg-invert-disabled);
+  --bg-bg-overlay-l1: var(--trae-bg-overlay-l1);
+  --bg-bg-overlay-l2: var(--trae-bg-overlay-l2);
+  --bg-bg-overlay-l3: var(--trae-bg-overlay-l3);
+  --border-border-neutral-l1: var(--trae-border-l1);
+  --border-border-brand: var(--trae-border-brand);
+  --border-border-brand-half: rgba(75, 63, 227, 0.4);
+  --status-error-default: var(--trae-status-error-default);
+  --status-error-surface-l1: var(--trae-status-error-surface-l1);
+  --radius-radius-md-12: 12px;
+  --spacers-spacer-0: 0;
+  --spacers-spacer-6: 6px;
+}
+
+@keyframes trae-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes trae-edit-bar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes trae-edit-bar-leave {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+@keyframes trae-edit-panel-leave {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+.trae-edit-mode-active:not(.trae-edit-mode-dragging) body *:not([data-trae-edit-ui]):not([data-trae-edit-ui] *) {
+  transition: none !important;
+  animation-play-state: paused !important;
+}
+
+.trae-edit-mode-reorder-hit-test [data-trae-edit-ui]:not(.trae-edit-pointer-shield):not(.trae-edit-panel),
+.trae-edit-mode-reorder-hit-test [data-trae-edit-ui]:not(.trae-edit-pointer-shield):not(.trae-edit-panel) * {
+  pointer-events: none !important;
+}
+
+.trae-browser-inspect-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: var(--trae-layer-browser-inspect-overlay);
+  pointer-events: auto;
+  background: transparent;
+}
+
+.trae-browser-inspect-highlight-box {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: var(--trae-layer-browser-inspect-highlight);
+  display: none;
+}
+
+.trae-browser-inspect-highlight-tag {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  height: 18px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  background-color: var(--trae-status-success-default);
+  color: var(--trae-text-onaccent);
+  font-size: 12px;
+  font-weight: 400;
+  display: none;
+  align-items: center;
+  z-index: var(--trae-layer-browser-inspect-action);
+}
+
+.trae-browser-inspect-highlight-box-show {
+  display: flex;
+}
+
+.trae-browser-inspect-highlight-tag.trae-browser-inspect-highlight-box-show {
+  display: none;
+}
+
+.trae-browser-inspect-select-button.trae-browser-inspect-highlight-box-show {
+  display: block !important;
+}
+
+.trae-browser-inspect-select-button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  z-index: var(--trae-layer-browser-inspect-action);
+}
+
+.trae-browser-inspect-select-highlight-box {
+  background: transparent !important;
+}
+
+.trae-browser-inspect-select-highlight-box .trae-browser-inspect-highlight-tag {
+  background-color: var(--trae-status-success-default);
+}
+
+.trae-add-to-chat-card {
+  display: block;
+  overflow: hidden;
+  background: var(--trae-bg-menu);
+  border: 1px solid var(--trae-border-l1);
+  border-radius: 8px;
+  box-shadow: var(--trae-floating-shadow);
+  transition:
+    width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.trae-add-to-chat-content {
+  position: relative;
+  width: max-content;
+}
+
+.trae-fade-exit {
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+.trae-fade-enter {
+  opacity: 1;
+  transition: opacity 0.2s ease-in;
+}
+
+.trae-buttons-view {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: transparent;
+}
+
+.trae-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transform: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+.trae-action-button:hover {
+  background: var(--trae-bg-overlay-l2);
+}
+
+.trae-action-button:active {
+  background: var(--trae-bg-overlay-l3);
+}
+
+.trae-action-button:focus-visible {
+  outline: 2px solid var(--trae-status-primary);
+  outline-offset: 1px;
+}
+
+.trae-action-button-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--trae-icon-default);
+  flex-shrink: 0;
+}
+
+.trae-action-button-title {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--trae-text-default);
+  white-space: nowrap;
+}
+
+.trae-edit-toolbar-button-active {
+  background: var(--bg-bg-brand-disabled, rgba(75, 63, 227, 0.22)) !important;
+  color: var(--icon-icon-brand, #4b3fe3) !important;
+  font-weight: bold !important;
+}
+
+.trae-edit-toolbar-button-active:hover {
+  background: var(--bg-bg-brand-popup, rgba(170, 183, 255, 0.36)) !important;
+}
+
+.trae-edit-toolbar button[data-action='alignment-dropdown']:hover,
+.trae-edit-toolbar button[data-action='text-align-dropdown']:hover,
+.trae-edit-toolbar button[data-action='font-decrease']:hover,
+.trae-edit-toolbar button[data-action='font-increase']:hover,
+.trae-edit-toolbar button[data-action^='align-']:hover {
+  border-radius: 8px;
+  background: var(--bg-bg-overlay-l1, rgba(115, 115, 115, 0.08)) !important;
+}
+
+.trae-edit-toolbar button[data-action='alignment-dropdown']:active,
+.trae-edit-toolbar button[data-action='text-align-dropdown']:active,
+.trae-edit-toolbar button[data-action='font-decrease']:active,
+.trae-edit-toolbar button[data-action='font-increase']:active,
+.trae-edit-toolbar button[data-action^='align-']:active {
+  border-radius: 8px;
+  background: var(--bg-bg-overlay-l2, rgba(115, 115, 115, 0.12)) !important;
+}
+
+.trae-comment-input {
+  background: transparent;
+  color: var(--trae-text-default);
+  caret-color: var(--trae-text-default);
+}
+
+.trae-comment-input::placeholder {
+  color: var(--trae-text-tertiary);
+}
+
+.trae-point-edit-bar,
+.trae-point-comment-input-bar,
+.trae-comment-only-panel {
+  transform-origin: top center;
+  will-change: opacity, transform;
+}
+
+.trae-edit-panel:not(.trae-edit-panel-leave) {
+  pointer-events: auto !important;
+}
+
+.trae-edit-bar-enter {
+  animation: trae-edit-bar-enter var(--transition-normal, 0.18s cubic-bezier(0.2, 0, 0, 1)) both;
+}
+
+.trae-edit-bar-leave {
+  pointer-events: none;
+  animation: trae-edit-bar-leave var(--transition-fast, 0.14s ease) both;
+}
+
+.trae-edit-panel-leave {
+  pointer-events: none;
+  animation: trae-edit-panel-leave var(--transition-fast, 0.14s ease) both;
+}
+
+.trae-edit-panel [data-trae-tooltip] {
+  position: relative;
+}
+
+.trae-edit-panel [data-trae-tooltip]::after {
+  content: attr(data-trae-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: var(--trae-layer-edit-tooltip);
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--trae-bg-invert, var(--bg-bg-invert));
+  color: var(--trae-text-onaccent, var(--text-text-onaccent));
+  box-shadow: var(--trae-floating-shadow);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.039px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-sizing: border-box;
+  opacity: 0;
+  transform: translateX(-50%);
+  visibility: hidden;
+}
+
+.trae-edit-panel [data-trae-tooltip]::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 5px);
+  z-index: var(--trae-layer-edit-tooltip);
+  width: 8px;
+  height: 4px;
+  background: var(--trae-bg-invert, var(--bg-bg-invert));
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.trae-edit-panel [data-trae-tooltip]:hover::after,
+.trae-edit-panel [data-trae-tooltip]:focus-visible::after,
+.trae-edit-panel [data-trae-tooltip]:hover::before,
+.trae-edit-panel [data-trae-tooltip]:focus-visible::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+.trae-comment-btn {
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.trae-comment-btn:disabled {
+  cursor: not-allowed;
+}
+
+.trae-comment-btn:focus-visible {
+  outline: 2px solid var(--trae-status-primary);
+  outline-offset: 1px;
+}
+
+.trae-comment-btn-primary {
+  background: var(--trae-bg-invert);
+  color: var(--trae-text-onaccent);
+}
+
+.trae-comment-btn-primary:hover:not(:disabled) {
+  background: var(--trae-bg-invert-hover);
+}
+
+.trae-comment-btn-primary:active:not(:disabled) {
+  background: var(--trae-bg-invert-active);
+}
+
+.trae-comment-btn-primary:disabled {
+  background: var(--trae-bg-invert-disabled);
+  color: var(--trae-text-disabled);
+}
+
+.trae-comment-btn-secondary {
+  background: var(--trae-bg-overlay-l2);
+  color: var(--trae-text-default);
+}
+
+.trae-comment-btn-secondary:hover:not(:disabled) {
+  background: var(--trae-bg-overlay-l3);
+}
+
+.trae-comment-btn-secondary:active:not(:disabled) {
+  background: var(--trae-bg-overlay-l4);
+}
+
+.trae-comment-btn-secondary:disabled {
+  background: var(--trae-bg-overlay-l2);
+  color: var(--trae-text-disabled);
+}
+
+.trae-comment-btn-text {
+  background: transparent;
+  color: var(--trae-text-default);
+}
+
+.trae-comment-btn-text:hover:not(:disabled) {
+  border-radius: 8px;
+  background: var(--bg-bg-overlay-l1, var(--trae-bg-overlay-l1));
+  color: var(--trae-text-default-hover);
+}
+
+.trae-comment-btn-text:active:not(:disabled) {
+  border-radius: 8px;
+  background: var(--trae-bg-overlay-l2);
+  color: var(--trae-text-default-active);
+}
+
+.trae-comment-btn-text:disabled {
+  background: transparent;
+  color: var(--trae-text-disabled);
+}
+
+.trae-marking-btn {
+  justify-content: center;
+}
+
+.trae-marking-btn:hover:not(:disabled) {
+  background: var(--trae-bg-overlay-l1) !important;
+}
+
+.trae-marking-btn-active {
+  background: var(--bg-bg-brand-disabled, rgba(75, 63, 227, 0.22)) !important;
+  color: var(--icon-icon-brand, var(--trae-icon-brand)) !important;
+}
+
+.trae-marking-btn-active:hover {
+  background: var(--bg-bg-brand-popup, rgba(170, 183, 255, 0.36)) !important;
+  color: var(--icon-icon-brand, var(--trae-icon-brand)) !important;
+}
+
+.trae-marking-btn:active:not(:disabled) {
+  background: var(--trae-bg-overlay-l2) !important;
+}
+
+.trae-marking-btn:disabled {
+  color: var(--trae-text-disabled) !important;
+  cursor: not-allowed !important;
+}
+
+.trae-action-button-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--trae-icon-secondary);
+  flex-shrink: 0;
+}
+
+.trae-shortcut-container {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.trae-shortcut-key {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 12px;
+  color: var(--trae-icon-secondary);
+}
+
+.trae-add-to-chat-divider {
+  width: 2px;
+  height: 12px;
+  padding: 0 6px;
+  box-sizing: content-box;
+  background-clip: content-box;
+  background-color: var(--trae-border-l2);
+  flex-shrink: 0;
+}
+
+.trae-editor-view {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  padding: 8px;
+  background: transparent;
+}
+
+.trae-editor-text-container {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  background: var(--trae-bg-overlay-l1);
+  border: 1px solid var(--trae-border-l3);
+  border-radius: 4px;
+  gap: 8px;
+}
+
+.trae-editor-textarea {
+  flex: 1;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--trae-text-default);
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+  max-height: 140px;
+}
+
+.trae-editor-textarea::placeholder {
+  color: var(--trae-text-tertiary);
+}
+
+.trae-editor-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-height 0.2s ease-out,
+    opacity 0.2s ease-out,
+    margin-top 0.2s ease-out;
+}
+
+.trae-editor-action-bar-visible {
+  max-height: 32px;
+  opacity: 1;
+  margin-top: 8px;
+}
+
+.trae-editor-cancel-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 4px;
+  background: var(--trae-bg-overlay-l2);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.trae-editor-cancel-button:hover {
+  background: var(--trae-bg-overlay-l3);
+}
+
+.trae-editor-cancel-button:active {
+  background: var(--trae-bg-overlay-l3);
+}
+
+.trae-editor-cancel-button:focus-visible {
+  outline: 2px solid var(--trae-status-primary);
+  outline-offset: 1px;
+}
+
+.trae-editor-cancel-text {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--trae-text-default);
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
+.trae-editor-submit-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 8px;
+  background: var(--trae-bg-invert);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.trae-editor-submit-button:hover {
+  background: var(--trae-bg-invert-hover);
+}
+
+.trae-editor-submit-button:active {
+  background: var(--trae-bg-invert-active);
+}
+
+.trae-editor-submit-button:focus-visible {
+  outline: 2px solid var(--trae-status-primary);
+  outline-offset: 1px;
+}
+
+.trae-editor-submit-text {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--trae-text-onaccent);
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
+.trae-editor-submit-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: var(--trae-icon-onaccent);
+  flex-shrink: 0;
+}
+
+.trae-success-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 32px;
+  white-space: nowrap;
+}
+
+.trae-success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--trae-status-success);
+  flex-shrink: 0;
+}
+
+.trae-success-text {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--trae-text-default);
+  user-select: none;
+}
+</style><style data-trae-pptx-captured-css="true">* { margin: 0px; padding: 0px; box-sizing: border-box; }
+:root { --primary: #1a73e8; --primary-light: #e8f0fe; --primary-dark: #1557b0; --bg: #f0f2f5; --surface: #ffffff; --border: #e0e0e0; --text: #202124; --text-secondary: #5f6368; --text-light: #9aa0a6; --danger: #ea4335; --success: #34a853; --warning: #fbbc04; --shadow: 0 1px 3px rgba(0,0,0,0.12); --shadow-lg: 0 4px 16px rgba(0,0,0,0.15); --radius: 8px; --toolbar-h: 44px; --menubar-h: 36px; --statusbar-h: 32px; --sidebar-w: 260px; }
+body { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+.menubar { height: var(--menubar-h); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0px 8px; gap: 2px; flex-shrink: 0; z-index: 100; }
+.menu-item { padding: 4px 12px; font-size: 13px; cursor: pointer; border-radius: 4px; position: relative; user-select: none; transition: background 0.15s; }
+.menu-item:hover { background: var(--primary-light); }
+.menu-dropdown { display: none; position: absolute; top: 100%; left: 0px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); min-width: 220px; padding: 4px 0px; z-index: 200; }
+.menu-item:hover .menu-dropdown { display: block; }
+.dropdown-item { padding: 8px 16px; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; transition: background 0.1s; }
+.dropdown-item:hover { background: var(--primary-light); }
+.dropdown-item .shortcut { color: var(--text-light); font-size: 11px; }
+.dropdown-divider { height: 1px; background: var(--border); margin: 4px 0px; }
+.app-title { font-weight: 700; font-size: 15px; color: var(--primary); padding: 0px 8px; margin-right: 8px; display: flex; align-items: center; gap: 6px; }
+.app-title svg { width: 20px; height: 20px; }
+.toolbar { height: var(--toolbar-h); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0px 8px; gap: 4px; flex-shrink: 0; overflow-x: auto; }
+.tool-btn { height: 32px; min-width: 32px; padding: 0px 8px; border: none; background: transparent; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 13px; color: var(--text); transition: 0.15s; white-space: nowrap; }
+.tool-btn:hover { background: var(--primary-light); }
+.tool-btn:active { transform: scale(0.95); }
+.tool-btn.active { background: var(--primary); color: white; }
+.tool-btn svg { width: 16px; height: 16px; }
+.tool-divider { width: 1px; height: 24px; background: var(--border); margin: 0px 4px; }
+select.tool-select { height: 30px; border: 1px solid var(--border); border-radius: 4px; padding: 0px 8px; font-size: 13px; background: var(--surface); cursor: pointer; }
+.main-body { flex: 1 1 0%; display: flex; overflow: hidden; }
+.sidebar { width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+.sidebar-header { padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.sidebar-content { flex: 1 1 0%; overflow-y: auto; padding: 4px 0px; }
+.sidebar-item { padding: 8px 14px; font-size: 13px; cursor: pointer; border-left: 3px solid transparent; transition: 0.15s; display: flex; align-items: center; gap: 8px; }
+.sidebar-item:hover { background: var(--primary-light); border-left-color: var(--primary); }
+.sidebar-item.active { background: var(--primary-light); border-left-color: var(--primary); font-weight: 600; }
+.sidebar-item .icon { width: 16px; height: 16px; opacity: 0.6; flex-shrink: 0; }
+.sidebar-toggle { cursor: pointer; padding: 4px; border-radius: 4px; }
+.sidebar-toggle:hover { background: var(--primary-light); }
+.content-area { flex: 1 1 0%; overflow: auto; position: relative; background: var(--bg); }
+.content-wrapper { min-height: 100%; display: flex; justify-content: center; padding: 20px; }
+.doc-page { background: white; width: 100%; max-width: 820px; min-height: 800px; padding: 60px 72px; box-shadow: var(--shadow); border-radius: 2px; outline: none; font-size: 14px; line-height: 1.8; color: var(--text); position: relative; }
+.doc-page.editing { box-shadow: 0 0 0 2px var(--primary), var(--shadow); }
+.doc-page h1, .doc-page h2, .doc-page h3 { margin: 16px 0px 8px; }
+.doc-page p { margin: 8px 0px; }
+.doc-page table { border-collapse: collapse; width: 100%; margin: 12px 0px; }
+.doc-page table td, .doc-page table th { border: 1px solid rgb(204, 204, 204); padding: 6px 10px; font-size: 13px; }
+.doc-page table th { background: rgb(245, 245, 245); font-weight: 600; }
+.doc-page img { max-width: 100%; height: auto; }
+.doc-page ul, .doc-page ol { padding-left: 28px; margin: 8px 0px; }
+.pdf-container { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px; }
+.pdf-container canvas { box-shadow: var(--shadow-lg); border-radius: 2px; }
+.sheet-container { width: 100%; overflow: auto; background: white; }
+.sheet-container table { border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+.sheet-container td, .sheet-container th { border: 1px solid rgb(208, 208, 208); padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-container.wrap td { white-space: normal; word-break: break-all; overflow-wrap: anywhere; overflow: visible; vertical-align: top; }
+.sheet-container th { background: rgb(240, 240, 240); font-weight: 600; position: sticky; top: 0px; z-index: 4; overflow: visible; }
+.sheet-container .row-number { background: rgb(240, 240, 240); text-align: center; width: 40px; position: sticky; left: 0px; z-index: 2; overflow: visible; }
+.sheet-container th.corner { position: sticky; top: 0px; left: 0px; z-index: 5; }
+.sheet-toolbar { position: sticky; top: 0px; z-index: 10; display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: rgb(248, 249, 250); border-bottom: 1px solid var(--border); font-size: 12px; flex-wrap: wrap; }
+.sheet-toolbar label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+.sheet-toolbar button { padding: 2px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: white; font-size: 12px; cursor: pointer; }
+.sheet-toolbar button:hover { border-color: var(--primary); color: var(--primary); }
+.sheet-toolbar .sheet-stats { color: var(--text-light); margin-left: auto; }
+.col-resizer { position: absolute; top: 0px; right: 0px; width: 6px; height: 100%; cursor: col-resize; z-index: 6; background: transparent; }
+.col-resizer:hover { background: var(--primary); opacity: 0.4; }
+.row-resizer { position: absolute; left: 0px; bottom: 0px; width: 100%; height: 6px; cursor: row-resize; z-index: 6; background: transparent; }
+.row-resizer:hover { background: var(--primary); opacity: 0.4; }
+body.resizing, body.resizing * { user-select: none !important; }
+.filter-bar { position: sticky; top: 0px; z-index: 10; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 10px; background: rgb(255, 251, 230); border-bottom: 1px solid var(--border); font-size: 12px; }
+.filter-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; background: var(--primary-light); color: var(--primary); border-radius: 10px; max-width: 320px; }
+.filter-tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-tag b { cursor: pointer; font-weight: 700; padding: 0px 2px; }
+.filter-tag b:hover { color: rgb(217, 48, 37); }
+.filter-clear-all { padding: 2px 8px; border: 1px solid var(--border); border-radius: 10px; background: white; font-size: 12px; cursor: pointer; }
+.filter-clear-all:hover { border-color: rgb(217, 48, 37); color: rgb(217, 48, 37); }
+.sheet-container th .col-header { display: flex; align-items: center; justify-content: space-between; gap: 4px; cursor: pointer; overflow: hidden; }
+.sheet-container th .filter-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex-shrink: 0; opacity: 0.4; transition: opacity 0.15s; }
+.sheet-container th .filter-icon:hover { opacity: 1; }
+.sheet-container th.filter-active .filter-icon { opacity: 1; color: var(--primary); }
+.sheet-container th.filter-active { background: var(--primary-light); }
+.filter-dropdown { position: fixed; z-index: 100; background: white; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); width: 260px; max-height: 380px; display: flex; flex-direction: column; overflow: hidden; }
+.filter-text { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid var(--border); }
+.filter-text input { flex: 1 1 0%; min-width: 0px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; outline: none; }
+.filter-text input:focus { border-color: var(--primary); }
+.filter-text button { padding: 4px 10px; border: none; border-radius: var(--radius); background: var(--primary); color: white; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.filter-text button:hover { background: var(--primary-dark); }
+.filter-divider { padding: 4px 10px; font-size: 11px; color: var(--text-light); background: rgb(250, 250, 250); border-bottom: 1px solid var(--border); }
+.filter-dropdown .filter-search { padding: 8px; border-bottom: 1px solid var(--border); }
+.filter-dropdown .filter-search input { width: 100%; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; outline: none; }
+.filter-dropdown .filter-search input:focus { border-color: var(--primary); }
+.filter-dropdown .filter-list { flex: 1 1 0%; overflow-y: auto; max-height: 200px; }
+.filter-dropdown .filter-item { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.filter-dropdown .filter-item:hover { background: var(--primary-light); }
+.filter-dropdown .filter-item input { margin: 0px; cursor: pointer; }
+.filter-dropdown .filter-item label { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-dropdown .filter-actions { display: flex; gap: 4px; padding: 8px; border-top: 1px solid var(--border); background: rgb(250, 250, 250); }
+.filter-dropdown .filter-actions button { flex: 1 1 0%; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; background: white; cursor: pointer; transition: 0.15s; }
+.filter-dropdown .filter-actions button:hover { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+.filter-dropdown .filter-actions .btn-apply { background: var(--primary); color: white; border-color: var(--primary); }
+.filter-dropdown .filter-actions .btn-apply:hover { background: var(--primary-dark); color: white; }
+.filter-backdrop { position: fixed; inset: 0px; z-index: 99; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px; color: var(--text-light); }
+.empty-state svg { width: 64px; height: 64px; opacity: 0.4; }
+.empty-state h2 { font-size: 18px; font-weight: 500; }
+.empty-state p { font-size: 13px; }
+.empty-state .drop-hint { margin-top: 12px; padding: 20px 40px; border: 2px dashed var(--border); border-radius: var(--radius); cursor: pointer; transition: 0.2s; text-align: center; }
+.empty-state .drop-hint:hover, .empty-state .drop-hint.dragover { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+.statusbar { height: var(--statusbar-h); background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0px 12px; gap: 16px; font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+.status-item { display: flex; align-items: center; gap: 4px; }
+.status-item .dot { width: 6px; height: 6px; border-radius: 50%; }
+.status-spacer { flex: 1 1 0%; }
+.status-btn { padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: background 0.15s; }
+.status-btn:hover { background: var(--primary-light); }
+.wordcount-modal { display: none; position: fixed; inset: 0px; background: rgba(0, 0, 0, 0.3); z-index: 500; align-items: center; justify-content: center; }
+.wordcount-modal.show { display: flex; }
+.wordcount-dialog { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 24px 28px; min-width: 320px; max-width: 400px; }
+.wordcount-dialog h3 { font-size: 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+.wordcount-dialog .close-btn { cursor: pointer; color: var(--text-light); font-size: 20px; }
+.wordcount-dialog .wc-row { display: flex; justify-content: space-between; padding: 8px 0px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.wordcount-dialog .wc-row:last-child { border-bottom: none; }
+.wordcount-dialog .wc-label { color: var(--text-secondary); }
+.wordcount-dialog .wc-value { font-weight: 600; }
+.toast { position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); background: rgb(51, 51, 51); color: white; padding: 10px 20px; border-radius: var(--radius); font-size: 13px; z-index: 999; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.loader { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 50; }
+.loader.show { display: block; }
+.spinner { width: 40px; height: 40px; border-top-style: ; border-top-width: ; border-right-color: ; border-right-style: ; border-right-width: ; border-bottom-color: ; border-bottom-style: ; border-bottom-width: ; border-left-color: ; border-left-style: ; border-left-width: ; border-image-source: ; border-image-slice: ; border-image-width: ; border-image-outset: ; border-image-repeat: ; border-top-color: var(--primary); border-radius: 50%; animation: 0.8s linear 0s infinite normal none running spin; }
+@keyframes spin { 
+  100% { transform: rotate(360deg); }
+}
+.epub-reader { width: 100%; height: 100%; position: relative; }
+.epub-reader #epub-view { width: 100%; height: calc(100vh - var(--menubar-h) - var(--toolbar-h) - var(--statusbar-h) - 40px); overflow: hidden; background: white; }
+.image-float-bar { display: none; position: fixed; z-index: 400; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 4px; gap: 2px; }
+.image-float-bar.show { display: flex; }
+.image-float-bar .tool-btn { height: 28px; min-width: 28px; }
+.hidden-input { display: none; }
+.zoom-control { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.zoom-control button { width: 24px; height: 24px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.zoom-control button:hover { background: var(--primary-light); }
+.zoom-control span { min-width: 40px; text-align: center; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(192, 192, 192); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(160, 160, 160); }
+.edit-tools { display: none; }
+.edit-tools.show { display: flex; gap: 2px; align-items: center; }
+.color-input { width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; padding: 2px; background: var(--surface); }
+:root { --trae-layer-image-download: 89990; --trae-layer-browser-inspect-overlay: 90000; --trae-layer-browser-inspect-highlight: 90010; --trae-layer-browser-inspect-action: 90020; --trae-layer-text-selection-action: 90030; --trae-layer-edit-tooltip: 100095; }
+:root, [data-trae-theme="dark"] { --trae-bg-base-default: #171717; --trae-bg-menu: #222427; --trae-bg-overlay-l1: rgba(255, 255, 255, 0.04); --trae-bg-overlay-l2: rgba(255, 255, 255, 0.08); --trae-bg-overlay-l3: rgba(255, 255, 255, 0.12); --trae-bg-overlay-l4: rgba(255, 255, 255, 0.16); --trae-bg-invert: #f5f9fe; --trae-bg-invert-hover: #e8ecf0; --trae-bg-invert-active: #dce0e4; --trae-bg-invert-disabled: rgba(224, 226, 242, 0.12); --bg-bg-brand-disabled: rgba(75, 63, 227, 0.35); --bg-bg-brand-popup: rgba(106, 111, 255, 0.15); --trae-border-l1: #e0e2f217; --trae-border-l2: rgba(255, 255, 255, 0.12); --trae-border-l3: rgba(255, 255, 255, 0.08); --trae-border-neutral-l3: rgba(229, 229, 229, 0.20); --trae-border-brand: #6a6fff; --trae-text-default: #f5f9fe; --trae-text-default-hover: #f5f9fe; --trae-text-default-active: #f5f9fe; --trae-text-secondary: rgba(245, 249, 254, 0.5); --trae-text-tertiary: rgba(245, 249, 254, 0.4); --trae-text-disabled: #666b75; --trae-text-onaccent: #222427; --trae-icon-default: #f5f9fe; --trae-icon-secondary: rgba(245, 249, 254, 0.5); --trae-icon-brand: #6a6fff; --icon-icon-brand: var(--trae-icon-brand); --trae-icon-onaccent: #222427; --trae-status-success: #22c55e; --trae-status-primary: #3b82f6; --trae-status-primary-default: #387bff; --trae-status-primary-surface-l1: rgba(53, 121, 255, 0.18); --trae-status-success-default: #33c192; --trae-status-success-surface-l1: rgba(0, 165, 110, 0.18); --trae-status-error-default: #f65a5a; --trae-status-error-surface-l1: rgba(246, 70, 70, 0.18); --trae-annotation-marker-bg: #4b3fe3; --trae-annotation-marker-text: #ffffff; --trae-annotation-region-border: var(--trae-status-primary-default); --trae-region-outside-mask-bg: rgba(0, 0, 0, 0.32); --trae-panel-shadow: 0px 6px 24px -1px rgba(0, 0, 0, 0.16); --trae-floating-shadow: 0px 2px 8px 0px rgba(0, 0, 0, 0.2); --trae-shadow-elevation-50: 0 1px 2px -1px rgba(0, 0, 0, 0.45); --text-text-default: var(--trae-text-default); --text-text-onaccent: var(--trae-text-onaccent); --bg-bg-menu: var(--trae-bg-menu); --bg-bg-white: var(--trae-bg-menu); --bg-bg-invert: var(--trae-bg-invert); --bg-bg-invert-disabled: var(--trae-bg-invert-disabled); --bg-bg-overlay-l1: var(--trae-bg-overlay-l1); --bg-bg-overlay-l2: var(--trae-bg-overlay-l2); --bg-bg-overlay-l3: var(--trae-bg-overlay-l3); --border-border-neutral-l1: var(--trae-border-l1); --border-border-brand: var(--trae-border-brand); --border-border-brand-half: rgba(106, 111, 255, 0.4); --status-error-default: var(--trae-status-error-default); --status-error-surface-l1: var(--trae-status-error-surface-l1); --radius-radius-md-12: 12px; --spacers-spacer-0: 0; --spacers-spacer-6: 6px; }
+[data-trae-theme="light"] { --trae-bg-base-default: #fafafa; --trae-bg-menu: #ffffff; --trae-bg-overlay-l1: rgba(0, 0, 0, 0.04); --trae-bg-overlay-l2: rgba(0, 0, 0, 0.06); --trae-bg-overlay-l3: rgba(0, 0, 0, 0.08); --trae-bg-overlay-l4: rgba(0, 0, 0, 0.12); --trae-bg-invert: #1f2328; --trae-bg-invert-hover: #32383f; --trae-bg-invert-active: #444d56; --trae-bg-invert-disabled: rgba(115, 115, 115, 0.20); --bg-bg-brand-disabled: rgba(75, 63, 227, 0.22); --bg-bg-brand-popup: rgba(170, 183, 255, 0.36); --trae-border-l1: rgba(0, 0, 0, 0.1); --trae-border-l2: rgba(0, 0, 0, 0.12); --trae-border-l3: rgba(0, 0, 0, 0.08); --trae-border-neutral-l3: rgba(115, 115, 115, 0.36); --trae-border-brand: #4b3fe3; --trae-text-default: #1f2328; --trae-text-default-hover: #111214; --trae-text-default-active: #111214; --trae-text-secondary: rgba(31, 35, 40, 0.5); --trae-text-tertiary: rgba(31, 35, 40, 0.4); --trae-text-disabled: #a1a1a1; --trae-text-onaccent: #ffffff; --trae-icon-default: #1f2328; --trae-icon-secondary: rgba(31, 35, 40, 0.5); --trae-icon-brand: #4b3fe3; --icon-icon-brand: var(--trae-icon-brand); --trae-icon-onaccent: #ffffff; --trae-status-success: #22c55e; --trae-status-primary: #3b82f6; --trae-status-primary-default: #2f74ff; --trae-status-primary-surface-l1: rgba(47, 116, 255, 0.12); --trae-status-success-default: #15a877; --trae-status-success-surface-l1: rgba(64, 176, 139, 0.12); --trae-status-error-default: #e8463a; --trae-status-error-surface-l1: rgba(232, 70, 58, 0.12); --trae-annotation-marker-bg: #4b3fe3; --trae-annotation-marker-text: #ffffff; --trae-annotation-region-border: var(--trae-status-primary-default); --trae-region-outside-mask-bg: rgba(0, 0, 0, 0.18); --trae-panel-shadow: 0px 6px 24px -1px rgba(24, 24, 24, 0.06); --trae-floating-shadow: 0px 2px 8px 0px rgba(24, 24, 24, 0.2); --trae-shadow-elevation-50: 0 1px 2px -1px rgba(24, 24, 24, 0.08); --text-text-default: var(--trae-text-default); --text-text-onaccent: var(--trae-text-onaccent); --bg-bg-menu: var(--trae-bg-menu); --bg-bg-white: var(--trae-bg-menu); --bg-bg-invert: var(--trae-bg-invert); --bg-bg-invert-disabled: var(--trae-bg-invert-disabled); --bg-bg-overlay-l1: var(--trae-bg-overlay-l1); --bg-bg-overlay-l2: var(--trae-bg-overlay-l2); --bg-bg-overlay-l3: var(--trae-bg-overlay-l3); --border-border-neutral-l1: var(--trae-border-l1); --border-border-brand: var(--trae-border-brand); --border-border-brand-half: rgba(75, 63, 227, 0.4); --status-error-default: var(--trae-status-error-default); --status-error-surface-l1: var(--trae-status-error-surface-l1); --radius-radius-md-12: 12px; --spacers-spacer-0: 0; --spacers-spacer-6: 6px; }
+@keyframes trae-spin { 
+  100% { transform: rotate(360deg); }
+}
+@keyframes trae-edit-bar-enter { 
+  0% { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0px) scale(1); }
+}
+@keyframes trae-edit-bar-leave { 
+  0% { opacity: 1; transform: translateY(0px) scale(1); }
+  100% { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+@keyframes trae-edit-panel-leave { 
+  0% { opacity: 1; transform: translateY(0px) scale(1); }
+  100% { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+.trae-edit-mode-active:not(.trae-edit-mode-dragging) body :not([data-trae-edit-ui]):not([data-trae-edit-ui] *) { transition: none !important; animation-play-state: paused !important; }
+.trae-edit-mode-reorder-hit-test [data-trae-edit-ui]:not(.trae-edit-pointer-shield):not(.trae-edit-panel), .trae-edit-mode-reorder-hit-test [data-trae-edit-ui]:not(.trae-edit-pointer-shield):not(.trae-edit-panel) * { pointer-events: none !important; }
+.trae-browser-inspect-overlay { position: fixed; top: 0px; left: 0px; width: 100%; height: 100%; z-index: var(--trae-layer-browser-inspect-overlay); pointer-events: auto; background: transparent; }
+.trae-browser-inspect-highlight-box { position: absolute; top: 0px; left: 0px; z-index: var(--trae-layer-browser-inspect-highlight); display: none; }
+.trae-browser-inspect-highlight-tag { position: absolute; left: 0px; top: 0px; height: 18px; padding: 0px 6px; box-sizing: border-box; border-radius: 4px; background-color: var(--trae-status-success-default); color: var(--trae-text-onaccent); font-size: 12px; font-weight: 400; display: none; align-items: center; z-index: var(--trae-layer-browser-inspect-action); }
+.trae-browser-inspect-highlight-box-show { display: flex; }
+.trae-browser-inspect-highlight-tag.trae-browser-inspect-highlight-box-show { display: none; }
+.trae-browser-inspect-select-button.trae-browser-inspect-highlight-box-show { display: block !important; }
+.trae-browser-inspect-select-button { position: absolute; top: 0px; left: 0px; display: none; z-index: var(--trae-layer-browser-inspect-action); }
+.trae-browser-inspect-select-highlight-box { background: transparent !important; }
+.trae-browser-inspect-select-highlight-box .trae-browser-inspect-highlight-tag { background-color: var(--trae-status-success-default); }
+.trae-add-to-chat-card { display: block; overflow: hidden; background: var(--trae-bg-menu); border: 1px solid var(--trae-border-l1); border-radius: 8px; box-shadow: var(--trae-floating-shadow); transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), height 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+.trae-add-to-chat-content { position: relative; width: max-content; }
+.trae-fade-exit { opacity: 0; transition: opacity 0.15s ease-out; }
+.trae-fade-enter { opacity: 1; transition: opacity 0.2s ease-in; }
+.trae-buttons-view { display: flex; align-items: center; gap: 6px; padding: 4px; background: transparent; }
+.trae-action-button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; background: transparent; border: none; border-radius: 4px; cursor: pointer; transform: none !important; transition: none !important; animation: auto ease 0s 1 normal none running none !important; }
+.trae-action-button:hover { background: var(--trae-bg-overlay-l2); }
+.trae-action-button:active { background: var(--trae-bg-overlay-l3); }
+.trae-action-button:focus-visible { outline: 2px solid var(--trae-status-primary); outline-offset: 1px; }
+.trae-action-button-icon { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; color: var(--trae-icon-default); flex-shrink: 0; }
+.trae-action-button-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; font-weight: 500; line-height: 16px; color: var(--trae-text-default); white-space: nowrap; }
+.trae-edit-toolbar-button-active { background: var(--bg-bg-brand-disabled, rgba(75, 63, 227, 0.22)) !important; color: var(--icon-icon-brand, #4b3fe3) !important; font-weight: bold !important; }
+.trae-edit-toolbar-button-active:hover { background: var(--bg-bg-brand-popup, rgba(170, 183, 255, 0.36)) !important; }
+.trae-edit-toolbar button[data-action="alignment-dropdown"]:hover, .trae-edit-toolbar button[data-action="text-align-dropdown"]:hover, .trae-edit-toolbar button[data-action="font-decrease"]:hover, .trae-edit-toolbar button[data-action="font-increase"]:hover, .trae-edit-toolbar button[data-action^="align-"]:hover { border-radius: 8px; background: var(--bg-bg-overlay-l1, rgba(115, 115, 115, 0.08)) !important; }
+.trae-edit-toolbar button[data-action="alignment-dropdown"]:active, .trae-edit-toolbar button[data-action="text-align-dropdown"]:active, .trae-edit-toolbar button[data-action="font-decrease"]:active, .trae-edit-toolbar button[data-action="font-increase"]:active, .trae-edit-toolbar button[data-action^="align-"]:active { border-radius: 8px; background: var(--bg-bg-overlay-l2, rgba(115, 115, 115, 0.12)) !important; }
+.trae-comment-input { background: transparent; color: var(--trae-text-default); caret-color: var(--trae-text-default); }
+.trae-comment-input::placeholder { color: var(--trae-text-tertiary); }
+.trae-point-edit-bar, .trae-point-comment-input-bar, .trae-comment-only-panel { transform-origin: center top; will-change: opacity, transform; }
+.trae-edit-panel:not(.trae-edit-panel-leave) { pointer-events: auto !important; }
+.trae-edit-bar-enter { animation: trae-edit-bar-enter var(--transition-normal, 0.18s cubic-bezier(0.2, 0, 0, 1)) both; }
+.trae-edit-bar-leave { pointer-events: none; animation: trae-edit-bar-leave var(--transition-fast, 0.14s ease) both; }
+.trae-edit-panel-leave { pointer-events: none; animation: trae-edit-panel-leave var(--transition-fast, 0.14s ease) both; }
+.trae-edit-panel [data-trae-tooltip] { position: relative; }
+.trae-edit-panel [data-trae-tooltip]::after { content: attr(data-trae-tooltip); position: absolute; left: 50%; bottom: calc(100% + 8px); z-index: var(--trae-layer-edit-tooltip); padding: 6px 10px; border-radius: 6px; background: var(--trae-bg-invert, var(--bg-bg-invert)); color: var(--trae-text-onaccent, var(--text-text-onaccent)); box-shadow: var(--trae-floating-shadow); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; font-size: 11px; font-weight: 500; line-height: 16px; letter-spacing: 0.039px; white-space: nowrap; pointer-events: none; box-sizing: border-box; opacity: 0; transform: translateX(-50%); visibility: hidden; }
+.trae-edit-panel [data-trae-tooltip]::before { content: ""; position: absolute; left: 50%; bottom: calc(100% + 5px); z-index: var(--trae-layer-edit-tooltip); width: 8px; height: 4px; background: var(--trae-bg-invert, var(--bg-bg-invert)); clip-path: polygon(0px 0px, 100% 0px, 50% 100%); transform: translateX(-50%); pointer-events: none; opacity: 0; visibility: hidden; }
+.trae-edit-panel [data-trae-tooltip]:hover::after, .trae-edit-panel [data-trae-tooltip]:focus-visible::after, .trae-edit-panel [data-trae-tooltip]:hover::before, .trae-edit-panel [data-trae-tooltip]:focus-visible::before { opacity: 1; visibility: visible; }
+.trae-comment-btn { justify-content: center; cursor: pointer; transition: background-color 0.15s; }
+.trae-comment-btn:disabled { cursor: not-allowed; }
+.trae-comment-btn:focus-visible { outline: 2px solid var(--trae-status-primary); outline-offset: 1px; }
+.trae-comment-btn-primary { background: var(--trae-bg-invert); color: var(--trae-text-onaccent); }
+.trae-comment-btn-primary:hover:not(:disabled) { background: var(--trae-bg-invert-hover); }
+.trae-comment-btn-primary:active:not(:disabled) { background: var(--trae-bg-invert-active); }
+.trae-comment-btn-primary:disabled { background: var(--trae-bg-invert-disabled); color: var(--trae-text-disabled); }
+.trae-comment-btn-secondary { background: var(--trae-bg-overlay-l2); color: var(--trae-text-default); }
+.trae-comment-btn-secondary:hover:not(:disabled) { background: var(--trae-bg-overlay-l3); }
+.trae-comment-btn-secondary:active:not(:disabled) { background: var(--trae-bg-overlay-l4); }
+.trae-comment-btn-secondary:disabled { background: var(--trae-bg-overlay-l2); color: var(--trae-text-disabled); }
+.trae-comment-btn-text { background: transparent; color: var(--trae-text-default); }
+.trae-comment-btn-text:hover:not(:disabled) { border-radius: 8px; background: var(--bg-bg-overlay-l1, var(--trae-bg-overlay-l1)); color: var(--trae-text-default-hover); }
+.trae-comment-btn-text:active:not(:disabled) { border-radius: 8px; background: var(--trae-bg-overlay-l2); color: var(--trae-text-default-active); }
+.trae-comment-btn-text:disabled { background: transparent; color: var(--trae-text-disabled); }
+.trae-marking-btn { justify-content: center; }
+.trae-marking-btn:hover:not(:disabled) { background: var(--trae-bg-overlay-l1) !important; }
+.trae-marking-btn-active { background: var(--bg-bg-brand-disabled, rgba(75, 63, 227, 0.22)) !important; color: var(--icon-icon-brand, var(--trae-icon-brand)) !important; }
+.trae-marking-btn-active:hover { background: var(--bg-bg-brand-popup, rgba(170, 183, 255, 0.36)) !important; color: var(--icon-icon-brand, var(--trae-icon-brand)) !important; }
+.trae-marking-btn:active:not(:disabled) { background: var(--trae-bg-overlay-l2) !important; }
+.trae-marking-btn:disabled { color: var(--trae-text-disabled) !important; cursor: not-allowed !important; }
+.trae-action-button-shortcut { display: flex; align-items: center; gap: 2px; color: var(--trae-icon-secondary); flex-shrink: 0; }
+.trae-shortcut-container { display: flex; align-items: center; gap: 2px; }
+.trae-shortcut-key { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; font-weight: 500; line-height: 12px; color: var(--trae-icon-secondary); }
+.trae-add-to-chat-divider { width: 2px; height: 12px; padding: 0px 6px; box-sizing: content-box; background-clip: content-box; background-color: var(--trae-border-l2); flex-shrink: 0; }
+.trae-editor-view { display: flex; flex-direction: column; width: 320px; padding: 8px; background: transparent; }
+.trae-editor-text-container { display: flex; align-items: center; padding: 8px; background: var(--trae-bg-overlay-l1); border: 1px solid var(--trae-border-l3); border-radius: 4px; gap: 8px; }
+.trae-editor-textarea { flex: 1 1 0%; padding: 0px 2px; border: none; background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; font-weight: 400; line-height: 20px; color: var(--trae-text-default); resize: none; outline: none; overflow-y: auto; max-height: 140px; }
+.trae-editor-textarea::placeholder { color: var(--trae-text-tertiary); }
+.trae-editor-action-bar { display: flex; align-items: center; justify-content: flex-end; gap: 4px; max-height: 0px; opacity: 0; overflow: hidden; transition: max-height 0.2s ease-out, opacity 0.2s ease-out, margin-top 0.2s ease-out; }
+.trae-editor-action-bar-visible { max-height: 32px; opacity: 1; margin-top: 8px; }
+.trae-editor-cancel-button { display: flex; align-items: center; justify-content: center; height: 24px; padding: 0px 4px; background: var(--trae-bg-overlay-l2); border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.15s; }
+.trae-editor-cancel-button:hover { background: var(--trae-bg-overlay-l3); }
+.trae-editor-cancel-button:active { background: var(--trae-bg-overlay-l3); }
+.trae-editor-cancel-button:focus-visible { outline: 2px solid var(--trae-status-primary); outline-offset: 1px; }
+.trae-editor-cancel-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; font-weight: 500; line-height: 16px; color: var(--trae-text-default); white-space: nowrap; padding: 0px 4px; }
+.trae-editor-submit-button { display: flex; align-items: center; justify-content: center; height: 24px; padding: 0px 8px; background: var(--trae-bg-invert); border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.15s; }
+.trae-editor-submit-button:hover { background: var(--trae-bg-invert-hover); }
+.trae-editor-submit-button:active { background: var(--trae-bg-invert-active); }
+.trae-editor-submit-button:focus-visible { outline: 2px solid var(--trae-status-primary); outline-offset: 1px; }
+.trae-editor-submit-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; font-weight: 500; line-height: 16px; color: var(--trae-text-onaccent); white-space: nowrap; padding: 0px 4px; }
+.trae-editor-submit-icon { display: flex; align-items: center; justify-content: center; width: 12px; height: 12px; color: var(--trae-icon-onaccent); flex-shrink: 0; }
+.trae-success-view { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0px 12px; height: 32px; white-space: nowrap; }
+.trae-success-icon { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; color: var(--trae-status-success); flex-shrink: 0; }
+.trae-success-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; font-weight: 400; line-height: 18px; color: var(--trae-text-default); user-select: none; }</style></head>
+<body>
+
+<!-- ====== 菜单栏 ====== -->
+<div class="menubar">
+  <div class="app-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <line x1="8" y1="13" x2="16" y2="13"></line>
+      <line x1="8" y1="17" x2="16" y2="17"></line>
+    </svg>
+    LiteDoc
+  </div>
+
+  <div class="menu-item">文件
+    <div class="menu-dropdown">
+      <div class="dropdown-item" onclick="document.getElementById('fileInput').click()">
+        <span>📂 打开文件</span>
+        <span class="shortcut">Ctrl+O</span>
+      </div>
+      <div class="dropdown-item" onclick="newDocument()">
+        <span>📄 新建文档</span>
+        <span class="shortcut">Ctrl+N</span>
+      </div>
+      <div class="dropdown-divider"></div>
+      <div class="dropdown-item" onclick="saveAsHTML()">
+        <span>💾 另存为 HTML</span>
+        <span class="shortcut">Ctrl+S</span>
+      </div>
+      <div class="dropdown-item" onclick="saveAsDOCX()">
+        <span>📝 另存为 Word (DOCX)</span>
+      </div>
+      <div class="dropdown-item" onclick="saveAsTXT()">
+        <span>📃 另存为 TXT</span>
+      </div>
+      <div class="dropdown-item" onclick="exportPDF()">
+        <span>🖨️ 导出为 PDF</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-item">编辑
+    <div class="menu-dropdown">
+      <div class="dropdown-item" onclick="toggleEditMode()">
+        <span>✏️ 切换编辑模式</span>
+        <span class="shortcut">Ctrl+E</span>
+      </div>
+      <div class="dropdown-divider"></div>
+      <div class="dropdown-item" onclick="document.execCommand('undo')">
+        <span>↩️ 撤销</span>
+        <span class="shortcut">Ctrl+Z</span>
+      </div>
+      <div class="dropdown-item" onclick="document.execCommand('redo')">
+        <span>↪️ 重做</span>
+        <span class="shortcut">Ctrl+Y</span>
+      </div>
+      <div class="dropdown-divider"></div>
+      <div class="dropdown-item" onclick="document.execCommand('selectAll')">
+        <span>📋 全选</span>
+        <span class="shortcut">Ctrl+A</span>
+      </div>
+      <div class="dropdown-item" onclick="searchInDoc()">
+        <span>🔍 查找</span>
+        <span class="shortcut">Ctrl+F</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-item">插入
+    <div class="menu-dropdown">
+      <div class="dropdown-item" onclick="document.getElementById('imageInput').click()">
+        <span>🖼️ 插入图片</span>
+      </div>
+      <div class="dropdown-item" onclick="insertTable()">
+        <span>📊 插入表格</span>
+      </div>
+      <div class="dropdown-item" onclick="insertLink()">
+        <span>🔗 插入链接</span>
+      </div>
+      <div class="dropdown-item" onclick="insertPageBreak()">
+        <span>📄 插入分页符</span>
+      </div>
+      <div class="dropdown-item" onclick="insertDateTime()">
+        <span>🕐 插入日期时间</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-item">视图
+    <div class="menu-dropdown">
+      <div class="dropdown-item" onclick="toggleSidebar()">
+        <span>📋 切换侧边栏</span>
+      </div>
+      <div class="dropdown-item" onclick="toggleFullscreen()">
+        <span>⛶ 全屏显示</span>
+        <span class="shortcut">F11</span>
+      </div>
+      <div class="dropdown-divider"></div>
+      <div class="dropdown-item" onclick="zoomInOut(0.1)">
+        <span>🔍+ 放大</span>
+        <span class="shortcut">Ctrl++</span>
+      </div>
+      <div class="dropdown-item" onclick="zoomInOut(-0.1)">
+        <span>🔍- 缩小</span>
+        <span class="shortcut">Ctrl+-</span>
+      </div>
+      <div class="dropdown-item" onclick="zoomReset()">
+        <span>🔄 重置缩放</span>
+        <span class="shortcut">Ctrl+0</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-item">工具
+    <div class="menu-dropdown">
+      <div class="dropdown-item" onclick="showWordCount()">
+        <span>📊 字数统计</span>
+        <span class="shortcut">Ctrl+Shift+C</span>
+      </div>
+      <div class="dropdown-item" onclick="uploadImageToDoc()">
+        <span>📤 上传图片并保存</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-item">帮助
+    <div class="menu-dropdown">
+      <div class="dropdown-item" onclick="showAbout()">
+        <span>ℹ️ 关于 LiteDoc</span>
+      </div>
+      <div class="dropdown-item" onclick="showShortcuts()">
+        <span>⌨️ 快捷键</span>
+      </div>
+      <div class="dropdown-divider"></div>
+      <div class="dropdown-item" style="color:var(--text-light);font-size:11px;">
+        <span>支持格式: DOCX PDF EPUB</span>
+      </div>
+      <div class="dropdown-item" style="color:var(--text-light);font-size:11px;">
+        <span>XLSX CSV TXT MD HTML</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 工具栏 ====== -->
+<div class="toolbar">
+  <button class="tool-btn" onclick="document.getElementById('fileInput').click()" title="打开文件">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+    打开
+  </button>
+  <button class="tool-btn" onclick="newDocument()" title="新建">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+    新建
+  </button>
+  <button class="tool-btn" onclick="saveAsHTML()" title="保存">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+    保存
+  </button>
+
+  <div class="tool-divider"></div>
+
+  <button class="tool-btn" onclick="toggleEditMode()" id="editToggleBtn" title="编辑模式">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+    编辑
+  </button>
+
+  <!-- 编辑模式下的富文本工具 -->
+  <div class="edit-tools" id="editTools">
+    <div class="tool-divider"></div>
+    <select class="tool-select" id="fontName" onchange="document.execCommand('fontName', false, this.value)" title="字体">
+      <option value="">字体</option>
+      <option value="Microsoft YaHei">微软雅黑</option>
+      <option value="SimSun">宋体</option>
+      <option value="SimHei">黑体</option>
+      <option value="KaiTi">楷体</option>
+      <option value="FangSong">仿宋</option>
+      <option value="Arial">Arial</option>
+      <option value="Times New Roman">Times New Roman</option>
+      <option value="Courier New">Courier New</option>
+    </select>
+    <select class="tool-select" id="fontSize" onchange="document.execCommand('fontSize', false, this.value)" title="字号">
+      <option value="">字号</option>
+      <option value="1">小</option>
+      <option value="2">较小</option>
+      <option value="3">正常</option>
+      <option value="4">较大</option>
+      <option value="5">大</option>
+      <option value="6">特大</option>
+      <option value="7">超大</option>
+    </select>
+    <button class="tool-btn" onclick="document.execCommand('bold')" title="加粗"><b>B</b></button>
+    <button class="tool-btn" onclick="document.execCommand('italic')" title="斜体"><i>I</i></button>
+    <button class="tool-btn" onclick="document.execCommand('underline')" title="下划线"><u>U</u></button>
+    <button class="tool-btn" onclick="document.execCommand('strikeThrough')" title="删除线"><s>S</s></button>
+    <input type="color" class="color-input" onchange="document.execCommand('foreColor', false, this.value)" title="文字颜色">
+    <input type="color" class="color-input" onchange="document.execCommand('hiliteColor', false, this.value)" title="背景色" value="#ffff00">
+    <button class="tool-btn" onclick="document.execCommand('justifyLeft')" title="左对齐">⬅</button>
+    <button class="tool-btn" onclick="document.execCommand('justifyCenter')" title="居中">↔</button>
+    <button class="tool-btn" onclick="document.execCommand('justifyRight')" title="右对齐">➡</button>
+    <button class="tool-btn" onclick="document.execCommand('insertUnorderedList')" title="无序列表">☰</button>
+    <button class="tool-btn" onclick="document.execCommand('insertOrderedList')" title="有序列表">№</button>
+    <button class="tool-btn" onclick="document.execCommand('indent')" title="增加缩进">⇥</button>
+    <button class="tool-btn" onclick="document.execCommand('outdent')" title="减少缩进">⇤</button>
+  </div>
+
+  <div class="tool-divider"></div>
+
+  <button class="tool-btn" onclick="document.getElementById('imageInput').click()" title="插入图片">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+    图片
+  </button>
+  <button class="tool-btn" onclick="showWordCount()" title="字数统计">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 13h6M9 17h3"></path></svg>
+    字数
+  </button>
+
+  <div class="tool-divider"></div>
+
+  <div class="zoom-control">
+    <button onclick="zoomInOut(-0.1)">−</button>
+    <span id="zoomLabel">100%</span>
+    <button onclick="zoomInOut(0.1)">+</button>
+  </div>
+</div>
+
+<!-- ====== 主体 ====== -->
+<div class="main-body">
+  <!-- 侧边栏 -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span id="sidebarTitle">文档结构</span>
+      <span class="sidebar-toggle" onclick="toggleSidebar()">✕</span>
+    </div>
+    <div class="sidebar-content" id="sidebarContent">
+      <div style="padding:20px;color:var(--text-light);font-size:13px;text-align:center;">
+        打开文档后显示结构
+      </div>
+    </div>
+  </div>
+
+  <!-- 内容区 -->
+  <div class="content-area" id="contentArea">
+    <div class="loader" id="loader"><div class="spinner"></div></div>
+    <div class="content-wrapper" id="contentWrapper">
+      <div class="empty-state" id="emptyState">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+        </svg>
+        <h2>欢迎使用 LiteDoc 轻量文档编辑器</h2>
+        <p>支持 Word、PDF、EPUB、Excel、TXT、Markdown 等多种格式</p>
+        <div class="drop-hint" onclick="document.getElementById('fileInput').click()" id="dropHint">
+          📂 点击此处或拖拽文件到此处打开
+          <br><span style="font-size:11px;">支持 .docx .pdf .epub .xlsx .csv .txt .md .html</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 状态栏 ====== -->
+<div class="statusbar">
+  <div class="status-item" id="statusFormat">
+    <span class="dot" style="background:var(--text-light);"></span>
+    <span>就绪</span>
+  </div>
+  <div class="status-item" id="statusFile"></div>
+  <div class="status-spacer"></div>
+  <div class="status-item" id="statusWords">字数: 0</div>
+  <div class="status-item" id="statusPage"></div>
+  <div class="status-btn" onclick="showWordCount()" style="cursor:pointer;">📊 统计</div>
+  <div class="status-btn" onclick="toggleEditMode()" style="cursor:pointer;" id="statusEditBtn">✏️ 编辑模式</div>
+</div>
+
+<!-- ====== 字数统计弹窗 ====== -->
+<div class="wordcount-modal" id="wcModal" onclick="if(event.target===this)closeWordCount()">
+  <div class="wordcount-dialog">
+    <h3>
+      <span>📊 字数统计</span>
+      <span class="close-btn" onclick="closeWordCount()">✕</span>
+    </h3>
+    <div class="wc-row"><span class="wc-label">总字符数（含空格）</span><span class="wc-value" id="wcTotalChars">0</span></div>
+    <div class="wc-row"><span class="wc-label">总字符数（不含空格）</span><span class="wc-value" id="wcCharsNoSpace">0</span></div>
+    <div class="wc-row"><span class="wc-label">中文字符数</span><span class="wc-value" id="wcChinese">0</span></div>
+    <div class="wc-row"><span class="wc-label">英文单词数</span><span class="wc-value" id="wcWords">0</span></div>
+    <div class="wc-row"><span class="wc-label">段落数</span><span class="wc-value" id="wcParagraphs">0</span></div>
+    <div class="wc-row"><span class="wc-label">行数</span><span class="wc-value" id="wcLines">0</span></div>
+    <div class="wc-row"><span class="wc-label">图片数量</span><span class="wc-value" id="wcImages">0</span></div>
+    <div class="wc-row"><span class="wc-label">表格数量</span><span class="wc-value" id="wcTables">0</span></div>
+  </div>
+</div>
+
+<!-- ====== Toast ====== -->
+<div class="toast" id="toast"></div>
+
+<!-- ====== 隐藏的文件输入 ====== -->
+<input type="file" id="fileInput" class="hidden-input" accept=".docx,.pdf,.epub,.xlsx,.xls,.csv,.txt,.md,.html,.htm,.wps,.et,.dps" onchange="handleFileSelect(event)">
+<input type="file" id="imageInput" class="hidden-input" accept="image/*" onchange="handleImageSelect(event)">
+
+<script>
+// ==================== 全局状态 ====================
+const state = {
+  currentFile: null,
+  currentFormat: null,
+  editMode: false,
+  zoom: 1.0,
+  epubBook: null,
+  epubRendition: null,
+  pdfDoc: null,
+  pdfCurrentPage: 1,
+  pdfTotalPages: 0,
+  workbook: null,
+  currentSheet: 0,
+  sidebarVisible: true,
+  sheetFilters: {},
+  colWidths: {},
+  rowHeights: {},
+  sheetRange: null,
+  wrapCells: false,
+};
+
+// PDF.js worker 配置
+// Worker 脚本已通过 <script> 标签加载，WorkerMessageHandler 已在全局定义
+function setupPdfWorker() {
+  if (typeof pdfjsLib === 'undefined') return Promise.resolve();
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  return Promise.resolve();
+}
+
+// ==================== 工具函数 ====================
+function showToast(msg, duration = 2500) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+function showLoader() { document.getElementById('loader').classList.add('show'); }
+function hideLoader() { document.getElementById('loader').classList.remove('show'); }
+
+function getFileExt(filename) {
+  return filename.split('.').pop().toLowerCase();
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1024/1024).toFixed(1) + ' MB';
+}
+
+// ==================== 文件打开 ====================
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) openFile(file);
+  event.target.value = ''; // 允许重复选同一文件
+}
+
+function openFile(file) {
+  state.currentFile = file;
+  const ext = getFileExt(file.name);
+  state.currentFormat = ext;
+
+  showLoader();
+  document.getElementById('emptyState').style.display = 'none';
+
+  // 更新状态栏
+  document.getElementById('statusFile').textContent = `${file.name} (${formatFileSize(file.size)})`;
+
+  const reader = new FileReader();
+
+  switch(ext) {
+    case 'docx':
+    case 'wps':
+      reader.onload = (e) => loadDOCX(e.target.result, file.name);
+      reader.readAsArrayBuffer(file);
+      break;
+
+    case 'pdf':
+      reader.onload = (e) => loadPDF(e.target.result, file.name);
+      reader.readAsArrayBuffer(file);
+      break;
+
+    case 'epub':
+      reader.onload = (e) => loadEPUB(e.target.result, file.name);
+      reader.readAsArrayBuffer(file);
+      break;
+
+    case 'xlsx':
+    case 'xls':
+    case 'csv':
+    case 'et':
+      reader.onload = (e) => loadSpreadsheet(e.target.result, file.name, ext);
+      reader.readAsArrayBuffer(file);
+      break;
+
+    case 'txt':
+      reader.onload = (e) => loadText(e.target.result, file.name);
+      reader.readAsText(file, 'UTF-8');
+      break;
+
+    case 'md':
+      reader.onload = (e) => loadMarkdown(e.target.result, file.name);
+      reader.readAsText(file, 'UTF-8');
+      break;
+
+    case 'html':
+    case 'htm':
+      reader.onload = (e) => loadHTML(e.target.result, file.name);
+      reader.readAsText(file, 'UTF-8');
+      break;
+
+    default:
+      hideLoader();
+      showToast('不支持的文件格式: .' + ext);
+      showEmptyState();
+  }
+}
+
+// ==================== DOCX 加载 ====================
+async function loadDOCX(arrayBuffer, filename) {
+  try {
+    const result = await mammoth.convertToHtml(
+      { arrayBuffer: arrayBuffer },
+      { styleMap: ["table => table.table-bordered:border:1px solid #ccc"] }
+    );
+
+    const html = result.value || '<p>(空文档)</p>';
+    renderDocPage(html, 'Word文档', filename);
+    updateStatus('Word', 'success');
+    buildSidebarFromHTML(html);
+    hideLoader();
+    showToast('DOCX 文档已加载');
+  } catch (err) {
+    hideLoader();
+    showToast('加载DOCX失败: ' + err.message);
+    console.error(err);
+  }
+}
+
+// ==================== PDF 加载 ====================
+async function loadPDF(arrayBuffer, filename) {
+  if (typeof pdfjsLib === 'undefined') {
+    hideLoader();
+    showToast('PDF.js 库未加载，请检查网络连接后刷新页面');
+    showEmptyState();
+    return;
+  }
+
+  const wrapper = document.getElementById('contentWrapper');
+  wrapper.innerHTML = '<div class="pdf-container" id="pdfContainer"></div>';
+
+  await setupPdfWorker();
+
+  const cMapUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cMaps/';
+  const baseParams = {
+    data: arrayBuffer,
+    cMapUrl: cMapUrl,
+    cMapPacked: true,
+  };
+
+  try {
+    let pdf;
+    try {
+      pdf = await pdfjsLib.getDocument(baseParams).promise;
+    } catch (workerErr) {
+      console.warn('PDF Worker 加载失败，切换到主线程模式重试...', workerErr);
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+      pdf = await pdfjsLib.getDocument(baseParams).promise;
+    }
+    state.pdfDoc = pdf;
+    state.pdfTotalPages = pdf.numPages;
+    state.pdfCurrentPage = 1;
+
+    await renderPDFPage(1);
+    updateStatus('PDF', 'success');
+    document.getElementById('statusPage').textContent = `第 1 / ${pdf.numPages} 页`;
+
+    buildPDFSidebar(pdf.numPages);
+    hideLoader();
+    showToast(`PDF 已加载，共 ${pdf.numPages} 页`);
+  } catch (err) {
+    hideLoader();
+    showToast('加载PDF失败: ' + err.message);
+    console.error(err);
+    showEmptyState();
+  }
+}
+
+async function renderPDFPage(pageNum) {
+  const pdf = state.pdfDoc;
+  if (!pdf) return;
+  const page = await pdf.getPage(pageNum);
+  const container = document.getElementById('pdfContainer');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  const viewport = page.getViewport({ scale: 1.5 * state.zoom });
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  canvas.dataset.pageNum = pageNum;
+  canvas.style.cursor = 'pointer';
+  canvas.onclick = () => { /* 可扩展 */ };
+
+  container.appendChild(canvas);
+  await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+  state.pdfCurrentPage = pageNum;
+  document.getElementById('statusPage').textContent = `第 ${pageNum} / ${state.pdfTotalPages} 页`;
+}
+
+function pdfGoToPage(pageNum) {
+  if (pageNum < 1 || pageNum > state.pdfTotalPages) return;
+  renderPDFPage(pageNum);
+}
+
+function buildPDFSidebar(totalPages) {
+  const content = document.getElementById('sidebarContent');
+  document.getElementById('sidebarTitle').textContent = '页面导航';
+  let html = '';
+  for (let i = 1; i <= totalPages; i++) {
+    html += `<div class="sidebar-item ${i===1?'active':''}" onclick="pdfGoToPage(${i}); highlightSidebarItem(this)">`;
+    html += `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>`;
+    html += `第 ${i} 页</div>`;
+  }
+  content.innerHTML = html;
+}
+
+// ==================== EPUB 加载 ====================
+function loadEPUB(arrayBuffer, filename) {
+  try {
+    const wrapper = document.getElementById('contentWrapper');
+    wrapper.innerHTML = `
+      <div class="epub-reader">
+        <div id="epub-view"></div>
+      </div>`;
+
+    const book = ePub(arrayBuffer);
+    state.epubBook = book;
+
+    const rendition = book.renderTo('epub-view', {
+      width: '100%',
+      height: '100%',
+      spread: 'none'
+    });
+    state.epubRendition = rendition;
+
+    rendition.display();
+
+    // 构建侧边栏 - 目录
+    book.loaded.navigation.then((navigation) => {
+      buildEPUBSidebar(navigation.toc);
+    });
+
+    updateStatus('EPUB', 'success');
+    hideLoader();
+    showToast('EPUB 电子书已加载');
+  } catch (err) {
+    hideLoader();
+    showToast('加载EPUB失败: ' + err.message);
+    console.error(err);
+  }
+}
+
+function buildEPUBSidebar(toc) {
+  const content = document.getElementById('sidebarContent');
+  document.getElementById('sidebarTitle').textContent = '目录';
+  let html = '';
+  function buildItems(items, level) {
+    items.forEach((item, idx) => {
+      const indent = level * 16;
+      html += `<div class="sidebar-item" style="padding-left:${14+indent}px;" onclick="epubGoTo('${item.href}')">`;
+      html += `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
+      html += `${item.label.trim()}</div>`;
+      if (item.subitems && item.subitems.length) {
+        buildItems(item.subitems, level + 1);
+      }
+    });
+  }
+  buildItems(toc, 0);
+  content.innerHTML = html || '<div style="padding:20px;color:var(--text-light);font-size:13px;">无目录</div>';
+}
+
+function epubGoTo(href) {
+  if (state.epubRendition) {
+    state.epubRendition.display(href);
+    highlightSidebarItem(event.target.closest('.sidebar-item'));
+  }
+}
+
+// ==================== 表格加载 (Excel/CSV) ====================
+function loadSpreadsheet(arrayBuffer, filename, ext) {
+  if (typeof XLSX === 'undefined') {
+    hideLoader();
+    showToast('SheetJS 库未加载，请检查网络连接后刷新页面');
+    showEmptyState();
+    return;
+  }
+  try {
+    let workbook;
+    if (ext === 'csv') {
+      const text = new TextDecoder('utf-8').decode(arrayBuffer);
+      workbook = XLSX.read(text, { type: 'string' });
+    } else {
+      workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    }
+    state.workbook = workbook;
+    state.currentSheet = 0;
+    state.sheetFilters = {};
+    state.colWidths = {};
+    state.rowHeights = {};
+    state.wrapCells = false;
+
+    renderSheet(0);
+    updateStatus(ext.toUpperCase(), 'success');
+
+    // 构建侧边栏 - 工作表列表
+    buildSheetSidebar(workbook.SheetNames);
+    hideLoader();
+    showToast(`${ext.toUpperCase()} 表格已加载，共 ${workbook.SheetNames.length} 个工作表`);
+  } catch (err) {
+    hideLoader();
+    showToast('加载表格失败: ' + err.message);
+    console.error(err);
+  }
+}
+
+function renderSheet(sheetIndex) {
+  const wb = state.workbook;
+  if (!wb) return;
+  const sheetName = wb.SheetNames[sheetIndex];
+  const sheet = wb.Sheets[sheetName];
+  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+  state.sheetRange = range;
+
+  const filterIcon = '<svg class="filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>';
+  const totalRows = range.e.r - range.s.r + 1;
+
+  // 预先按筛选条件计算可见行
+  const rowVisible = new Array(totalRows).fill(true);
+  let visibleCount = totalRows;
+  const activeCols = Object.keys(state.sheetFilters);
+  if (activeCols.length) {
+    for (let r = range.s.r; r <= range.e.r; r++) {
+      for (const c of activeCols) {
+        const f = state.sheetFilters[c];
+        const cell = sheet[XLSX.utils.encode_cell({ r, c: +c })];
+        const val = cell ? String(cell.v != null ? cell.v : '') : '';
+        if (f.type === 'text') {
+          if (!val.toLowerCase().includes(f.kw.toLowerCase())) { rowVisible[r - range.s.r] = false; break; }
+        } else if (!f.set.has(val)) { rowVisible[r - range.s.r] = false; break; }
+      }
+      if (!rowVisible[r - range.s.r]) visibleCount--;
+    }
+  }
+
+  const wrapper = document.getElementById('contentWrapper');
+  let html = `<div class="sheet-container${state.wrapCells ? ' wrap' : ''}" id="sheetContainer">`;
+
+  // 工具栏：完整显示开关 + 自动调整列宽 + 行数统计
+  html += '<div class="sheet-toolbar">';
+  html += `<label title="开启后单元格自动换行、行高自动适应内容"><input type="checkbox" ${state.wrapCells ? 'checked' : ''} onchange="toggleWrapCells(this.checked)"> 完整显示（自动行高）</label>`;
+  html += `<button onclick="autoFitAllCols()" title="根据内容自动调整所有列宽">自动调整列宽</button>`;
+  html += `<span class="sheet-stats">共 ${totalRows} 行${activeCols.length ? `，筛选后 ${visibleCount} 行` : ''}</span>`;
+  html += '</div>';
+
+  // 筛选状态栏
+  if (activeCols.length) {
+    html += '<div class="filter-bar">已启用筛选：';
+    for (const c of activeCols) {
+      const f = state.sheetFilters[c];
+      const colName = XLSX.utils.encode_col(+c);
+      const desc = f.type === 'text' ? `包含"${escapeHtml(f.kw)}"` : `${f.set.size} 个值`;
+      html += `<span class="filter-tag"><span>${colName} 列: ${desc}</span><b title="移除该筛选" onclick="clearSheetFilter(${c})">×</b></span>`;
+    }
+    html += `<button class="filter-clear-all" onclick="clearAllSheetFilters()">清除全部</button></div>`;
+  }
+
+  // colgroup 控制列宽
+  html += '<table><colgroup><col style="width:46px;">';
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    html += `<col style="width:${getColWidth(c)}px;">`;
+  }
+  html += '</colgroup><thead><tr>';
+  html += '<th class="corner"></th>';
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const hasFilter = state.sheetFilters[c] ? 'filter-active' : '';
+    html += `<th class="${hasFilter}" onclick="toggleSheetFilter(event, ${c})">`;
+    html += `<div class="col-header"><span>${XLSX.utils.encode_col(c)}</span>${filterIcon}</div>`;
+    html += `<div class="col-resizer" title="拖动调整列宽，双击自适应" onmousedown="startColResize(event, ${c})" ondblclick="autoFitCol(event, ${c})" onclick="event.stopPropagation()"></div>`;
+    html += '</th>';
+  }
+  html += '</tr></thead><tbody>';
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    if (!rowVisible[r - range.s.r]) continue;
+    let trStyle = '';
+    if (state.rowHeights[r]) trStyle = `height:${state.rowHeights[r]}px;`;
+    html += `<tr style="${trStyle}" data-row="${r}"><td class="row-number">${r+1}<div class="row-resizer" title="拖动调整行高" onmousedown="startRowResize(event, ${r})"></div></td>`;
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cellAddr = XLSX.utils.encode_cell({ r, c });
+      const cell = sheet[cellAddr];
+      const val = cell ? String(cell.v != null ? cell.v : '') : '';
+      const style = cell && cell.t === 'n' ? 'text-align:right;' : '';
+      html += `<td style="${style}" title="${val.replace(/"/g,'&quot;')}">${escapeHtml(val)}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></div>';
+  wrapper.innerHTML = html;
+
+  state.currentSheet = sheetIndex;
+}
+
+// ==================== 完整显示开关 ====================
+function toggleWrapCells(on) {
+  state.wrapCells = on;
+  const sc = document.getElementById('sheetContainer');
+  if (sc) sc.classList.toggle('wrap', on);
+}
+
+// ==================== 列宽/行高拖拽 ====================
+let _rs = null;
+
+function getColWidth(c) {
+  return state.colWidths[c] || 110;
+}
+
+function startColResize(e, c) {
+  e.preventDefault();
+  e.stopPropagation();
+  _rs = { type: 'col', c, start: e.clientX, orig: getColWidth(c) };
+  document.body.classList.add('resizing');
+  document.addEventListener('mousemove', _rsMove);
+  document.addEventListener('mouseup', _rsEnd);
+}
+
+function startRowResize(e, r) {
+  e.preventDefault();
+  e.stopPropagation();
+  const tr = e.target.closest('tr');
+  _rs = { type: 'row', r, start: e.clientY, orig: state.rowHeights[r] || (tr ? tr.offsetHeight : 22) };
+  document.body.classList.add('resizing');
+  document.addEventListener('mousemove', _rsMove);
+  document.addEventListener('mouseup', _rsEnd);
+}
+
+function _rsMove(e) {
+  if (!_rs || !state.sheetRange) return;
+  const range = state.sheetRange;
+  if (_rs.type === 'col') {
+    const w = Math.max(50, _rs.orig + e.clientX - _rs.start);
+    state.colWidths[_rs.c] = w;
+    const cols = document.querySelectorAll('.sheet-container col');
+    const col = cols[_rs.c - range.s.c + 1];
+    if (col) col.style.width = w + 'px';
+  } else {
+    const h = Math.max(20, _rs.orig + e.clientY - _rs.start);
+    state.rowHeights[_rs.r] = h;
+    const tr = document.querySelector(`.sheet-container tbody tr[data-row="${_rs.r}"]`);
+    if (tr) tr.style.height = h + 'px';
+  }
+}
+
+function _rsEnd() {
+  _rs = null;
+  document.body.classList.remove('resizing');
+  document.removeEventListener('mousemove', _rsMove);
+  document.removeEventListener('mouseup', _rsEnd);
+}
+
+function _measureColWidth(c) {
+  const wb = state.workbook;
+  const sheetName = wb.SheetNames[state.currentSheet];
+  const sheet = wb.Sheets[sheetName];
+  const range = state.sheetRange;
+  let maxW = 0;
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+    if (!cell || cell.v == null) continue;
+    const s = String(cell.v);
+    let w = 0;
+    for (const ch of s) w += ch.charCodeAt(0) > 255 ? 12 : 7;
+    if (w > maxW) maxW = w;
+    if (maxW > 420) { maxW = 420; break; }
+  }
+  return Math.max(60, Math.min(maxW + 18, 440));
+}
+
+function autoFitCol(e, c) {
+  e.stopPropagation();
+  state.colWidths[c] = _measureColWidth(c);
+  const cols = document.querySelectorAll('.sheet-container col');
+  const col = cols[c - state.sheetRange.s.c + 1];
+  if (col) col.style.width = state.colWidths[c] + 'px';
+}
+
+function autoFitAllCols() {
+  const range = state.sheetRange;
+  if (!range) return;
+  const cols = document.querySelectorAll('.sheet-container col');
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const w = _measureColWidth(c);
+    state.colWidths[c] = w;
+    const col = cols[c - range.s.c + 1];
+    if (col) col.style.width = w + 'px';
+  }
+  showToast('已根据内容自动调整所有列宽');
+}
+
+// ==================== 表格列筛选 ====================
+function getUniqueColumnValues(colIdx) {
+  const wb = state.workbook;
+  const sheetName = wb.SheetNames[state.currentSheet];
+  const sheet = wb.Sheets[sheetName];
+  const range = state.sheetRange;
+  const vals = new Set();
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const cell = sheet[XLSX.utils.encode_cell({ r, c: colIdx })];
+    vals.add(cell ? String(cell.v != null ? cell.v : '') : '');
+  }
+  return Array.from(vals).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+}
+
+function toggleSheetFilter(event, colIdx) {
+  event.stopPropagation();
+  closeSheetFilterDropdown();
+
+  const th = event.currentTarget;
+  const rect = th.getBoundingClientRect();
+  const values = getUniqueColumnValues(colIdx);
+  const existing = state.sheetFilters[colIdx];
+
+  state._fd = {
+    colIdx,
+    values,
+    term: '',
+    sel: existing && existing.type === 'values' ? new Set(existing.set) : new Set(values),
+    kw: existing && existing.type === 'text' ? existing.kw : '',
+  };
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'filter-dropdown';
+  dropdown.id = 'filterDropdown';
+  dropdown.style.top = Math.min(rect.bottom, window.innerHeight - 400) + 'px';
+  dropdown.style.left = Math.min(rect.left, window.innerWidth - 270) + 'px';
+
+  dropdown.innerHTML = `
+    <div class="filter-text">
+      <input id="filterTextKw" type="text" placeholder="文本包含，如：法学" value="${state._fd.kw.replace(/"/g,'&quot;')}" onkeydown="if(event.key==='Enter')applyTextFilter(${colIdx})">
+      <button onclick="applyTextFilter(${colIdx})">筛选</button>
+    </div>
+    <div class="filter-divider">或按值精确选择（共 ${values.length} 个值）</div>
+    <div class="filter-search"><input type="text" placeholder="搜索值..." oninput="filterSearchValues(this)"></div>
+    <div class="filter-list" id="filterList"></div>
+    <div class="filter-actions">
+      <button onclick="fdSelectAll(true)">全选</button>
+      <button onclick="fdSelectAll(false)">全不选</button>
+      <button onclick="clearSheetFilter(${colIdx})">清除</button>
+      <button class="btn-apply" onclick="applySheetFilter(${colIdx})">确定</button>
+    </div>`;
+
+  document.body.appendChild(dropdown);
+  renderFilterListItems();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'filter-backdrop';
+  backdrop.id = 'filterBackdrop';
+  backdrop.onclick = () => closeSheetFilterDropdown();
+  document.body.appendChild(backdrop);
+
+  const kwInput = document.getElementById('filterTextKw');
+  if (kwInput) kwInput.focus();
+}
+
+function renderFilterListItems() {
+  const fd = state._fd;
+  if (!fd) return;
+  const list = document.getElementById('filterList');
+  if (!list) return;
+  const matches = fd.term ? fd.values.filter(v => v.toLowerCase().includes(fd.term)) : fd.values;
+  const cap = 300;
+  let html = '';
+  matches.slice(0, cap).forEach(val => {
+    const safe = val.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const checked = fd.sel.has(val) ? 'checked' : '';
+    html += `<div class="filter-item"><input type="checkbox" value="${safe}" ${checked} onchange="fdToggleValue(this)"><label title="${escapeHtml(val)}">${escapeHtml(val) || '(空)'}</label></div>`;
+  });
+  if (matches.length > cap) {
+    html = `<div style="padding:4px 10px;font-size:11px;color:var(--text-light);">匹配 ${matches.length} 个值，仅显示前 ${cap} 个，请继续输入搜索缩小范围</div>` + html;
+  } else if (fd.term) {
+    html = `<div style="padding:4px 10px;font-size:11px;color:var(--text-light);">匹配 ${matches.length} 个值</div>` + html;
+  }
+  list.innerHTML = html || '<div style="padding:8px 10px;font-size:12px;color:var(--text-light);">无匹配值</div>';
+}
+
+function fdToggleValue(cb) {
+  if (!state._fd) return;
+  if (cb.checked) state._fd.sel.add(cb.value);
+  else state._fd.sel.delete(cb.value);
+}
+
+function fdSelectAll(on) {
+  const fd = state._fd;
+  if (!fd) return;
+  const matches = fd.term ? fd.values.filter(v => v.toLowerCase().includes(fd.term)) : fd.values;
+  matches.forEach(v => { if (on) fd.sel.add(v); else fd.sel.delete(v); });
+  renderFilterListItems();
+}
+
+function filterSearchValues(input) {
+  if (!state._fd) return;
+  state._fd.term = input.value.toLowerCase();
+  renderFilterListItems();
+}
+
+function applyTextFilter(colIdx) {
+  const input = document.getElementById('filterTextKw');
+  const kw = (input ? input.value : '').trim();
+  if (!kw) {
+    delete state.sheetFilters[colIdx];
+  } else {
+    state.sheetFilters[colIdx] = { type: 'text', kw };
+  }
+  closeSheetFilterDropdown();
+  renderSheet(state.currentSheet);
+}
+
+function applySheetFilter(colIdx) {
+  const fd = state._fd;
+  if (!fd) return;
+
+  if (fd.sel.size === 0) {
+    showToast('请至少选择一个值');
+    return;
+  }
+
+  if (fd.sel.size === fd.values.length) {
+    delete state.sheetFilters[colIdx];
+  } else {
+    state.sheetFilters[colIdx] = { type: 'values', set: new Set(fd.sel) };
+  }
+
+  closeSheetFilterDropdown();
+  renderSheet(state.currentSheet);
+}
+
+function clearSheetFilter(colIdx) {
+  delete state.sheetFilters[colIdx];
+  closeSheetFilterDropdown();
+  renderSheet(state.currentSheet);
+  showToast('已清除该列筛选');
+}
+
+function clearAllSheetFilters() {
+  state.sheetFilters = {};
+  renderSheet(state.currentSheet);
+  showToast('已清除全部筛选');
+}
+
+function closeSheetFilterDropdown() {
+  const dd = document.getElementById('filterDropdown');
+  if (dd) dd.remove();
+  const bd = document.getElementById('filterBackdrop');
+  if (bd) bd.remove();
+  state._fd = null;
+}
+
+function buildSheetSidebar(sheetNames) {
+  const content = document.getElementById('sidebarContent');
+  document.getElementById('sidebarTitle').textContent = '工作表';
+  let html = '';
+  sheetNames.forEach((name, i) => {
+    html += `<div class="sidebar-item ${i===0?'active':''}" onclick="state.sheetFilters={}; state.colWidths={}; state.rowHeights={}; renderSheet(${i}); highlightSidebarItem(this)">`;
+    html += `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>`;
+    html += `${name}</div>`;
+  });
+  content.innerHTML = html;
+}
+
+// ==================== TXT 加载 ====================
+function loadText(text, filename) {
+  const html = text.split('\n').map(line => `<p>${escapeHtml(line) || '&nbsp;'}</p>`).join('');
+  renderDocPage(html, '文本文档', filename);
+  updateStatus('TXT', 'success');
+  hideLoader();
+  showToast('TXT 文档已加载');
+}
+
+// ==================== Markdown 加载 ====================
+function loadMarkdown(text, filename) {
+  marked.setOptions({ breaks: true, gfm: true });
+  const html = marked.parse(text);
+  renderDocPage(html, 'Markdown', filename);
+  updateStatus('MD', 'success');
+  buildSidebarFromHTML(html);
+  hideLoader();
+  showToast('Markdown 文档已加载');
+}
+
+// ==================== HTML 加载 ====================
+function loadHTML(text, filename) {
+  // 提取 body 内容
+  const bodyMatch = text.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const html = bodyMatch ? bodyMatch[1] : text;
+  renderDocPage(html, 'HTML文档', filename);
+  updateStatus('HTML', 'success');
+  buildSidebarFromHTML(html);
+  hideLoader();
+  showToast('HTML 文档已加载');
+}
+
+// ==================== 通用渲染 ====================
+function renderDocPage(html, type, filename) {
+  const wrapper = document.getElementById('contentWrapper');
+  wrapper.innerHTML = `<div class="doc-page" id="docPage">${html}</div>`;
+  // 更新字数
+  updateWordCount();
+}
+
+function showEmptyState() {
+  const wrapper = document.getElementById('contentWrapper');
+  wrapper.innerHTML = `
+    <div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <h2>欢迎使用 LiteDoc 轻量文档编辑器</h2>
+      <p>支持 Word、PDF、EPUB、Excel、TXT、Markdown 等多种格式</p>
+      <div class="drop-hint" onclick="document.getElementById('fileInput').click()">
+        📂 点击此处或拖拽文件到此处打开
+        <br><span style="font-size:11px;">支持 .docx .pdf .epub .xlsx .csv .txt .md .html</span>
+      </div>
+    </div>`;
+}
+
+// ==================== 侧边栏构建 ====================
+function buildSidebarFromHTML(html) {
+  const content = document.getElementById('sidebarContent');
+  document.getElementById('sidebarTitle').textContent = '文档结构';
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
+  const headings = tempDiv.querySelectorAll('h1, h2, h3');
+  if (headings.length === 0) {
+    content.innerHTML = '<div style="padding:20px;color:var(--text-light);font-size:13px;text-align:center;">无标题结构</div>';
+    return;
+  }
+  let sidebarHtml = '';
+  headings.forEach((h, i) => {
+    const level = h.tagName.toLowerCase();
+    const indent = level === 'h1' ? 0 : level === 'h2' ? 1 : 2;
+    const text = h.textContent.trim().substring(0, 30);
+    h.id = `heading-${i}`;
+    sidebarHtml += `<div class="sidebar-item" style="padding-left:${14+indent*16}px;" onclick="scrollToHeading('heading-${i}'); highlightSidebarItem(this)">`;
+    sidebarHtml += `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
+    sidebarHtml += `${escapeHtml(text)}</div>`;
+  });
+  content.innerHTML = sidebarHtml;
+}
+
+function scrollToHeading(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function highlightSidebarItem(el) {
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+// ==================== 字数统计 ====================
+function updateWordCount() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) {
+    document.getElementById('statusWords').textContent = '字数: 0';
+    return;
+  }
+  const text = docPage.innerText || docPage.textContent || '';
+  const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const total = text.length;
+  const noSpace = text.replace(/\s/g, '').length;
+  document.getElementById('statusWords').textContent = `字数: ${noSpace}`;
+}
+
+function showWordCount() {
+  const docPage = document.getElementById('docPage');
+  const pdfContainer = document.getElementById('pdfContainer');
+  let text = '';
+  let images = 0;
+  let tables = 0;
+  let paragraphs = 0;
+  let lines = 0;
+
+  if (docPage) {
+    text = docPage.innerText || docPage.textContent || '';
+    images = docPage.querySelectorAll('img').length;
+    tables = docPage.querySelectorAll('table').length;
+    paragraphs = docPage.querySelectorAll('p').length;
+    lines = text.split('\n').filter(l => l.trim()).length;
+  } else if (state.epubBook) {
+    showToast('EPUB 模式暂不支持字数统计');
+    return;
+  } else if (pdfContainer) {
+    showToast('PDF 模式暂不支持字数统计');
+    return;
+  } else if (state.workbook) {
+    showToast('表格模式暂不支持字数统计');
+    return;
+  } else {
+    showToast('请先打开文档');
+    return;
+  }
+
+  const total = text.length;
+  const noSpace = text.replace(/\s/g, '').length;
+  const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const words = (text.match(/[a-zA-Z]+/g) || []).length;
+
+  document.getElementById('wcTotalChars').textContent = total.toLocaleString();
+  document.getElementById('wcCharsNoSpace').textContent = noSpace.toLocaleString();
+  document.getElementById('wcChinese').textContent = chinese.toLocaleString();
+  document.getElementById('wcWords').textContent = words.toLocaleString();
+  document.getElementById('wcParagraphs').textContent = paragraphs.toLocaleString();
+  document.getElementById('wcLines').textContent = lines.toLocaleString();
+  document.getElementById('wcImages').textContent = images.toLocaleString();
+  document.getElementById('wcTables').textContent = tables.toLocaleString();
+
+  document.getElementById('wcModal').classList.add('show');
+}
+
+function closeWordCount() {
+  document.getElementById('wcModal').classList.remove('show');
+}
+
+// ==================== 编辑模式 ====================
+function toggleEditMode() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) {
+    showToast('请先打开或新建文档');
+    return;
+  }
+  state.editMode = !state.editMode;
+  docPage.contentEditable = state.editMode;
+  docPage.classList.toggle('editing', state.editMode);
+  document.getElementById('editToggleBtn').classList.toggle('active', state.editMode);
+  document.getElementById('editTools').classList.toggle('show', state.editMode);
+  document.getElementById('statusEditBtn').textContent = state.editMode ? '✏️ 退出编辑' : '✏️ 编辑模式';
+
+  if (state.editMode) {
+    showToast('编辑模式已开启');
+    docPage.focus();
+  } else {
+    showToast('编辑模式已关闭');
+    updateWordCount();
+  }
+}
+
+// ==================== 保存导出 ====================
+function saveAsHTML() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) {
+    showToast('无可保存的内容');
+    return;
+  }
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>${state.currentFile ? state.currentFile.name : '文档'}</title>
+<style>
+body { font-family: 'Microsoft YaHei', sans-serif; max-width: 820px; margin: 40px auto; padding: 20px; line-height: 1.8; }
+table { border-collapse: collapse; width: 100%; }
+td, th { border: 1px solid #ccc; padding: 6px 10px; }
+img { max-width: 100%; }
+</style>
+</head>
+<body>
+${docPage.innerHTML}
+</body>
+</html>`;
+  downloadFile(html, (state.currentFile?.name || 'document').replace(/\.\w+$/, '') + '.html', 'text/html');
+  showToast('已保存为 HTML');
+}
+
+function saveAsDOCX() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) {
+    showToast('无可保存的内容');
+    return;
+  }
+  // 使用简单的 HTML-to-DOCX 转换（基于 Word HTML 格式）
+  const htmlContent = docPage.innerHTML;
+  const docxHtml = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8"><title>Document</title>
+<style>
+@page { size: A4; margin: 2.54cm; }
+body { font-family: 'Microsoft YaHei', sans-serif; font-size: 12pt; line-height: 1.5; }
+table { border-collapse: collapse; }
+td, th { border: 1pt solid #000; padding: 4pt; }
+img { max-width: 100%; }
+</style>
+</head>
+<body>${htmlContent}</body>
+</html>`;
+
+  // 使用 Word 兼容的 MHTML 格式保存为 .doc
+  const blob = new Blob(['\ufeff', docxHtml], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (state.currentFile?.name || 'document').replace(/\.\w+$/, '') + '.doc';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('已保存为 Word 文档 (.doc)');
+}
+
+function saveAsTXT() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) {
+    showToast('无可保存的内容');
+    return;
+  }
+  const text = docPage.innerText || docPage.textContent || '';
+  downloadFile(text, (state.currentFile?.name || 'document').replace(/\.\w+$/, '') + '.txt', 'text/plain');
+  showToast('已保存为 TXT');
+}
+
+function exportPDF() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) {
+    showToast('请先打开文档');
+    return;
+  }
+  // 使用浏览器打印功能导出PDF
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html><head><meta charset="UTF-8"><title>打印</title>
+    <style>
+    body { font-family: 'Microsoft YaHei', sans-serif; max-width: 820px; margin: 40px auto; padding: 20px; line-height: 1.8; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #ccc; padding: 6px 10px; }
+    img { max-width: 100%; }
+    </style></head>
+    <body>${docPage.innerHTML}</body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 500);
+  showToast('正在准备打印，选择"另存为PDF"');
+}
+
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType + ';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ==================== 图片处理 ====================
+function handleImageSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    insertImageIntoDoc(e.target.result, file.name);
+    // 同时保存到本地
+    saveImageToLocal(e.target.result, file.name);
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+function insertImageIntoDoc(dataUrl, filename) {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) {
+    showToast('请先打开或新建文档');
+    return;
+  }
+  if (!state.editMode) {
+    toggleEditMode();
+  }
+  const img = document.createElement('img');
+  img.src = dataUrl;
+  img.alt = filename;
+  img.style.maxWidth = '100%';
+  img.style.margin = '8px 0';
+
+  // 插入到光标位置或末尾
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0 && docPage.contains(selection.anchorNode)) {
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(img);
+    range.collapse(false);
+  } else {
+    docPage.appendChild(img);
+  }
+  showToast('图片已插入');
+  updateWordCount();
+}
+
+function saveImageToLocal(dataUrl, filename) {
+  // 将图片保存为文件下载
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = 'image_' + Date.now() + '_' + filename;
+  // 不自动点击，只在需要时下载
+  // a.click(); // 取消注释则自动下载
+}
+
+function uploadImageToDoc() {
+  document.getElementById('imageInput').click();
+}
+
+// ==================== 插入功能 ====================
+function insertTable() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) {
+    showToast('请先打开或新建文档');
+    return;
+  }
+  if (!state.editMode) toggleEditMode();
+
+  const rows = prompt('行数:', '3');
+  const cols = prompt('列数:', '3');
+  if (!rows || !cols) return;
+
+  const table = document.createElement('table');
+  table.style.borderCollapse = 'collapse';
+  table.style.width = '100%';
+  table.style.margin = '12px 0';
+
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  for (let c = 0; c < parseInt(cols); c++) {
+    const th = document.createElement('th');
+    th.style.border = '1px solid #ccc';
+    th.style.padding = '6px 10px';
+    th.style.background = '#f5f5f5';
+    th.textContent = `列${c+1}`;
+    headerRow.appendChild(th);
+  }
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  for (let r = 0; r < parseInt(rows); r++) {
+    const tr = document.createElement('tr');
+    for (let c = 0; c < parseInt(cols); c++) {
+      const td = document.createElement('td');
+      td.style.border = '1px solid #ccc';
+      td.style.padding = '6px 10px';
+      td.textContent = '';
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0 && docPage.contains(selection.anchorNode)) {
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(table);
+  } else {
+    docPage.appendChild(table);
+  }
+  showToast('表格已插入');
+}
+
+function insertLink() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) return;
+  if (!state.editMode) toggleEditMode();
+
+  const url = prompt('链接地址:', 'https://');
+  const text = prompt('链接文字:', '点击这里');
+  if (!url) return;
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.textContent = text || url;
+  a.target = '_blank';
+
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0 && docPage.contains(selection.anchorNode)) {
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(a);
+  } else {
+    docPage.appendChild(a);
+  }
+  showToast('链接已插入');
+}
+
+function insertPageBreak() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) return;
+  if (!state.editMode) toggleEditMode();
+
+  const div = document.createElement('div');
+  div.style.pageBreakAfter = 'always';
+  div.innerHTML = '<hr style="border:2px dashed #ccc;margin:20px 0;">';
+  docPage.appendChild(div);
+  showToast('分页符已插入');
+}
+
+function insertDateTime() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) return;
+  if (!state.editMode) toggleEditMode();
+
+  const now = new Date();
+  const dateStr = now.toLocaleString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+
+  const span = document.createElement('span');
+  span.textContent = dateStr;
+  span.style.color = '#666';
+  span.style.fontSize = '13px';
+
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0 && docPage.contains(selection.anchorNode)) {
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(span);
+  } else {
+    docPage.appendChild(span);
+  }
+  showToast('日期时间已插入');
+}
+
+// ==================== 新建文档 ====================
+function newDocument() {
+  state.currentFile = null;
+  state.currentFormat = null;
+  state.editMode = false;
+  state.epubBook = null;
+  state.epubRendition = null;
+  state.pdfDoc = null;
+  state.workbook = null;
+
+  const wrapper = document.getElementById('contentWrapper');
+  wrapper.innerHTML = `<div class="doc-page" id="docPage" contenteditable="true">
+    <h1>新建文档</h1>
+    <p>在此输入内容...</p>
+  </div>`;
+
+  state.editMode = true;
+  document.getElementById('docPage').classList.add('editing');
+  document.getElementById('editToggleBtn').classList.add('active');
+  document.getElementById('editTools').classList.add('show');
+  document.getElementById('statusEditBtn').textContent = '✏️ 退出编辑';
+  document.getElementById('statusFile').textContent = '新建文档';
+  document.getElementById('statusFormat').innerHTML = '<span class="dot" style="background:var(--success);"></span><span>新建</span>';
+  document.getElementById('statusPage').textContent = '';
+
+  // 清空侧边栏
+  document.getElementById('sidebarContent').innerHTML = '<div style="padding:20px;color:var(--text-light);font-size:13px;text-align:center;">新文档</div>';
+
+  showToast('已新建文档');
+  document.getElementById('docPage').focus();
+}
+
+// ==================== 查找 ====================
+function searchInDoc() {
+  const docPage = document.getElementById('docPage');
+  if (!docPage) {
+    showToast('请先打开文档');
+    return;
+  }
+  const keyword = prompt('查找内容:', '');
+  if (!keyword) return;
+
+  // 简单实现：用 window.find
+  window.find(keyword);
+  showToast(`查找: "${keyword}"`);
+}
+
+// ==================== 缩放 ====================
+function zoomInOut(delta) {
+  state.zoom = Math.max(0.3, Math.min(3.0, state.zoom + delta));
+  applyZoom();
+}
+
+function zoomReset() {
+  state.zoom = 1.0;
+  applyZoom();
+}
+
+function applyZoom() {
+  const label = document.getElementById('zoomLabel');
+  label.textContent = Math.round(state.zoom * 100) + '%';
+
+  const docPage = document.getElementById('docPage');
+  if (docPage) {
+    docPage.style.transform = `scale(${state.zoom})`;
+    docPage.style.transformOrigin = 'top center';
+  }
+
+  if (state.currentFormat === 'pdf') {
+    renderPDFPage(state.pdfCurrentPage);
+  }
+}
+
+// ==================== 侧边栏切换 ====================
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  state.sidebarVisible = !state.sidebarVisible;
+  sidebar.style.display = state.sidebarVisible ? 'flex' : 'none';
+}
+
+// ==================== 全屏 ====================
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+// ==================== 状态更新 ====================
+function updateStatus(format, status) {
+  const colors = { success: 'var(--success)', error: 'var(--danger)', info: 'var(--primary)' };
+  document.getElementById('statusFormat').innerHTML = `<span class="dot" style="background:${colors[status]};"></span><span>${format}</span>`;
+}
+
+// ==================== 关于与快捷键 ====================
+function showAbout() {
+  alert(`LiteDoc 轻量文档编辑器 v1.0\n\n功能特点:\n• 支持 Word(docx)、PDF、EPUB 电子书\n• 支持 Excel(xlsx/csv) 表格\n• 支持 TXT、Markdown、HTML\n• 字数统计（中英文、段落、图片等）\n• 富文本编辑（字体、颜色、对齐等）\n• 图片插入与保存\n• 多格式导出（HTML/Word/TXT/PDF）\n• 轻量级，纯前端运行，无需安装\n\n使用 CDN 加载库文件，需联网使用。`);
+}
+
+function showShortcuts() {
+  alert(`快捷键说明:\n\nCtrl+O — 打开文件\nCtrl+N — 新建文档\nCtrl+S — 保存\nCtrl+E — 切换编辑模式\nCtrl+F — 查找\nCtrl+Shift+C — 字数统计\nCtrl+Z — 撤销\nCtrl+Y — 重做\nCtrl+A — 全选\nCtrl++ — 放大\nCtrl+- — 缩小\nCtrl+0 — 重置缩放\nF11 — 全屏`);
+}
+
+// ==================== 工具函数 ====================
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ==================== 拖拽支持 ====================
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const dropHint = document.getElementById('dropHint');
+  if (dropHint) dropHint.classList.add('dragover');
+});
+
+document.addEventListener('dragleave', (e) => {
+  const dropHint = document.getElementById('dropHint');
+  if (dropHint) dropHint.classList.remove('dragover');
+});
+
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const dropHint = document.getElementById('dropHint');
+  if (dropHint) dropHint.classList.remove('dragover');
+
+  const files = e.dataTransfer.files;
+  if (files && files.length > 0) {
+    openFile(files[0]);
+  }
+});
+
+// ==================== 键盘快捷键 ====================
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    switch(e.key) {
+      case 'o': e.preventDefault(); document.getElementById('fileInput').click(); break;
+      case 'n': e.preventDefault(); newDocument(); break;
+      case 's': e.preventDefault(); saveAsHTML(); break;
+      case 'e': e.preventDefault(); toggleEditMode(); break;
+      case 'f': e.preventDefault(); searchInDoc(); break;
+      case '0': e.preventDefault(); zoomReset(); break;
+      case '=':
+      case '+': e.preventDefault(); zoomInOut(0.1); break;
+      case '-': e.preventDefault(); zoomInOut(-0.1); break;
+    }
+    if (e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+      e.preventDefault();
+      showWordCount();
+    }
+  }
+  if (e.key === 'F11') {
+    e.preventDefault();
+    toggleFullscreen();
+  }
+  if (e.key === 'Escape') {
+    closeWordCount();
+  }
+});
+
+// ==================== EPUB 导航按钮 ====================
+function epubPrev() {
+  if (state.epubRendition) state.epubRendition.prev();
+}
+function epubNext() {
+  if (state.epubRendition) state.epubRendition.next();
+}
+
+// ==================== 初始化 ====================
+window.addEventListener('load', () => {
+  console.log('LiteDoc 初始化完成');
+});
+</script>
+
+
+<div data-trae-edit-ui="true" class="trae-image-download-btn" title="Download image" style="position: fixed; display: none; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: var(--trae-bg-menu, #222427); border: 1px solid var(--trae-border-l2, rgba(255,255,255,0.12)); box-shadow: var(--trae-floating-shadow, 0px 2px 8px 0px rgba(0,0,0,0.2)); color: var(--trae-icon-default, #f5f9fe); cursor: pointer; z-index: 89990; transition: background 0.15s; pointer-events: auto;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 2v8m0 0L5 7m3 3l3-3M3 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg></div></body></html>
